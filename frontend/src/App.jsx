@@ -914,7 +914,7 @@ function statusOf(booking) {
   return { tone: "success", label: "Confirmed" };
 }
 
-export function OwnerDashboard({ bookings, floorElements, setFloorElements, roomSize, setRoomSize, sittings, setSittings, terms, setTerms, sections, setSections, addBooking, removeBooking, updateBooking, toggleArrival, setArrivalAll, customerNotes, setCustomerNote, refundDeposit, onLogout, userEmail, bookingPageUrl }) {
+export function OwnerDashboard({ bookings, floorElements, setFloorElements, roomSize, setRoomSize, sittings, setSittings, terms, setTerms, sections, setSections, addBooking, removeBooking, updateBooking, toggleArrival, setArrivalAll, customerNotes, setCustomerNote, refundDeposit, onLogout, userEmail, bookingPageUrl, isOwner = true, roleLabel, onOpenTeam, onChangePassword, allRestaurantsUrl }) {
   const [date, setDate] = useState(todayISO());
   const [sitting, setSitting] = useState(sittings[0]?.id || "");
   const [view, setView] = useState("timeline");
@@ -959,7 +959,7 @@ export function OwnerDashboard({ bookings, floorElements, setFloorElements, room
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14 }}>
           <div>
             <div className="wv-mono" style={{ fontSize: 11, letterSpacing: "0.2em", color: "var(--text-faint)", marginBottom: 6 }}>
-              OWNER DASHBOARD
+              DASHBOARD
             </div>
             <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0 }}>{RESTAURANT_NAME}</h1>
           </div>
@@ -995,12 +995,19 @@ export function OwnerDashboard({ bookings, floorElements, setFloorElements, room
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4" /><path d="M4 21v-1a8 8 0 0 1 16 0v1" /></svg>
                 Customers
               </button>
-              <button
-                onClick={() => setSettingsOpen(true)}
-                className="lib-pill"
-              >
-                Settings
-              </button>
+              {isOwner && onOpenTeam && (
+                <button onClick={onOpenTeam} className="lib-pill">
+                  Team
+                </button>
+              )}
+              {isOwner && (
+                <button
+                  onClick={() => setSettingsOpen(true)}
+                  className="lib-pill"
+                >
+                  Settings
+                </button>
+              )}
             </div>
             <div style={{ display: "flex", gap: 22, alignItems: "flex-end" }}>
               <MiniStat label="Bookings today" value={dayBookings.length} />
@@ -1012,7 +1019,17 @@ export function OwnerDashboard({ bookings, floorElements, setFloorElements, room
                   Customer booking page
                 </a>
               )}
-              {userEmail && <span>{userEmail}</span>}
+              {allRestaurantsUrl && (
+                <a href={allRestaurantsUrl} style={{ color: "var(--accent)", textDecoration: "none" }}>
+                  All restaurants
+                </a>
+              )}
+              {userEmail && <span>{userEmail}{roleLabel ? ` · ${roleLabel}` : ""}</span>}
+              {onChangePassword && (
+                <button onClick={onChangePassword} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", padding: 0, fontFamily: "inherit", fontSize: 12 }}>
+                  Change password
+                </button>
+              )}
               {onLogout && (
                 <button onClick={onLogout} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", padding: 0, fontFamily: "inherit", fontSize: 12 }}>
                   Log out
@@ -1235,14 +1252,14 @@ export function OwnerDashboard({ bookings, floorElements, setFloorElements, room
           </div>
 
           <div style={{ width: 300, marginRight: 28, marginBottom: 28 }}>
-            <button
+            {isOwner && <button
               onClick={() => setBuilderOpen(true)}
               className="lib-pill"
               style={{ width: "100%", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
               Edit floor layout
-            </button>
+            </button>}
             <div style={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 14, padding: 18, marginBottom: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.05em", color: "var(--text-dim)", marginBottom: 12 }}>LEGEND</div>
               <LegendRow color="var(--panel-raised)" label="Available" />

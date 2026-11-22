@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { CustomerBooking, OwnerDashboard, fontStyles, setRestaurantInfo, LIB_TOKENS } from "./App.jsx";
-import { makeApi, loadToken, saveToken } from "./api.js";
+import { makeApi, loadToken, saveToken, PLATFORM } from "./api.js";
+import { Login, TeamModal, PasswordModal, PlatformApp, darkButton } from "./accounts.jsx";
 
 /* Addresses:
    /                      → Dorsia holding page
    /<restaurant>          → public booking page, e.g. /don-camillo
-   /<restaurant>/admin    → owner dashboard (login required)          */
+   /<restaurant>/admin    → restaurant dashboard (owner or staff login)
+   /admin                 → Dorsia master page (all restaurants)       */
 
 function Centered({ children, dark }) {
   return (
@@ -96,110 +98,6 @@ function CustomerApp({ slug }) {
   );
 }
 
-/* ---------- Owner login ---------- */
-
-const darkInput = {
-  width: "100%",
-  padding: "11px 12px",
-  borderRadius: 8,
-  border: "1px solid #38383A",
-  background: "#1C1C1E",
-  color: "#fff",
-  fontSize: 14,
-  fontFamily: "inherit",
-  boxSizing: "border-box",
-  marginBottom: 12,
-};
-const darkButton = {
-  width: "100%",
-  padding: 12,
-  borderRadius: 8,
-  border: "none",
-  background: "#0A84FF",
-  color: "#fff",
-  fontSize: 14,
-  fontWeight: 600,
-  cursor: "pointer",
-  fontFamily: "inherit",
-};
-
-function Login({ slug, api, onLoggedIn }) {
-  const [status, setStatus] = useState(null);
-  const [mode, setMode] = useState("login");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [setupKey, setSetupKey] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    api
-      .get("/auth/status")
-      .then((s) => {
-        setStatus(s);
-        if (!s.hasOwner && s.setupEnabled) setMode("setup");
-      })
-      .catch((e) => setError(e.status === 404 ? "We couldn't find that restaurant." : e.message));
-  }, [api]);
-
-  async function submit(e) {
-    e.preventDefault();
-    setError("");
-    setBusy(true);
-    try {
-      const res =
-        mode === "setup"
-          ? await api.post("/auth/setup", { setupKey, email, password })
-          : await api.post("/auth/login", { email, password });
-      onLoggedIn(res.token);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Centered dark>
-      <form onSubmit={submit} style={{ textAlign: "left", width: 340, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
-        <div style={{ fontSize: 11, letterSpacing: "0.2em", color: "#636366", marginBottom: 6 }}>DORSIA · OWNER DASHBOARD</div>
-        <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 20px" }}>{mode === "setup" ? "Create the owner account" : "Log in"}</h1>
-        {mode === "setup" && (
-          <>
-            <div style={{ fontSize: 12, color: "#98989D", marginBottom: 12, lineHeight: 1.5 }}>
-              First-time setup for <strong>{slug}</strong>. Enter the setup key from Render's environment settings.
-            </div>
-            <input placeholder="Setup key" value={setupKey} onChange={(e) => setSetupKey(e.target.value)} style={darkInput} autoComplete="off" />
-          </>
-        )}
-        <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} style={darkInput} autoComplete="username" required />
-        <input
-          type="password"
-          placeholder={mode === "setup" ? "Choose a password (10+ characters)" : "Password"}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          style={darkInput}
-          autoComplete={mode === "setup" ? "new-password" : "current-password"}
-          required
-        />
-        {error && <div style={{ fontSize: 13, color: "#FF453A", marginBottom: 12 }}>{error}</div>}
-        <button type="submit" disabled={busy || !status} style={{ ...darkButton, opacity: busy ? 0.6 : 1 }}>
-          {busy ? "Please wait..." : mode === "setup" ? "Create account" : "Log in"}
-        </button>
-        {status && !status.hasOwner && status.setupEnabled && (
-          <button
-            type="button"
-            onClick={() => setMode(mode === "setup" ? "login" : "setup")}
-            style={{ marginTop: 14, background: "none", border: "none", color: "#0A84FF", cursor: "pointer", fontSize: 12, padding: 0 }}
-          >
-            {mode === "setup" ? "I already have an account" : "First time? Create the owner account"}
-          </button>
-        )}
-      </form>
-    </Centered>
-  );
-}
-
 /* ---------- Owner dashboard ---------- */
 
 // Turns a booking from the dashboard into what the server expects.
@@ -215,17 +113,34 @@ function bookingPayload(b) {
 }
 
 function AdminApp({ slug }) {
-  const [token, setTokenState] = useState(() => loadToken(slug));
-  const tokenRef = useRef(token);
+  // Use this restaurant's own login if there is one, otherwise the Dorsia master login.
+  const [login, setLogin] = useState(() => {
+    const own = loadToken(slug);
+    if (own) return { token: own, kind: "tenant" };
+    const master = loadToken(PLATFORM);
+    return master ? { token: master, kind: "platform" } : null;
+  });
+  const tokenRef = useRef(login?.token || null);
+  const token = login?.token || null;
   const setToken = useCallback(
     (t) => {
       tokenRef.current = t;
       saveToken(slug, t);
-      setTokenState(t);
+      setLogin(t ? { token: t, kind: "tenant" } : null);
     },
     [slug]
   );
-  const api = useRef(makeApi(slug, () => tokenRef.current, () => setToken(null))).current;
+  const logOut = useCallback(() => {
+    if (login?.kind === "platform") saveToken(PLATFORM, null);
+    else saveToken(slug, null);
+    tokenRef.current = null;
+    setLogin(null);
+  }, [login, slug]);
+  const logOutRef = useRef(logOut);
+  logOutRef.current = logOut;
+  const api = useRef(makeApi(slug, () => tokenRef.current, () => logOutRef.current())).current;
+  const [teamOpen, setTeamOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
 
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -419,7 +334,17 @@ function AdminApp({ slug }) {
     [api, run, customers]
   );
 
-  if (!token) return <Login slug={slug} api={api} onLoggedIn={setToken} />;
+  if (!token)
+    return (
+      <Login
+        api={api}
+        label="DORSIA · RESTAURANT DASHBOARD"
+        paths={{ status: "/auth/status", login: "/auth/login", setup: "/auth/setup" }}
+        setupHint={`First-time setup for "${slug}": this creates the owner login. Enter the setup key from Render's environment settings.`}
+        onLoggedIn={setToken}
+      />
+    );
+  const isOwner = user?.role === "owner";
   if (loadError)
     return (
       <Centered dark>
@@ -476,11 +401,18 @@ function AdminApp({ slug }) {
         setArrivalAll={setArrivalAll}
         customerNotes={customerNotes}
         setCustomerNote={setCustomerNote}
-        refundDeposit={refundDeposit}
+        refundDeposit={isOwner ? refundDeposit : null}
         userEmail={user?.email}
+        roleLabel={user?.master ? "Dorsia master" : isOwner ? "Owner" : "Staff"}
+        isOwner={isOwner}
+        onOpenTeam={() => setTeamOpen(true)}
+        onChangePassword={user?.master ? null : () => setPasswordOpen(true)}
+        allRestaurantsUrl={user?.master ? "/admin" : null}
         bookingPageUrl={`/${slug}`}
-        onLogout={() => setToken(null)}
+        onLogout={logOut}
       />
+      {teamOpen && <TeamModal api={api} currentEmail={user?.email} onClose={() => setTeamOpen(false)} />}
+      {passwordOpen && <PasswordModal api={api} path="/auth/password" onClose={() => setPasswordOpen(false)} />}
     </div>
   );
 }
@@ -491,6 +423,7 @@ function Root() {
   const parts = window.location.pathname.split("/").filter(Boolean).map(decodeURIComponent);
   let page;
   if (parts.length === 0) page = <Landing />;
+  else if (parts.length === 1 && parts[0] === "admin") page = <PlatformApp />;
   else if (parts.length === 1) page = <CustomerApp slug={parts[0]} />;
   else if (parts.length === 2 && parts[1] === "admin") page = <AdminApp slug={parts[0]} />;
   else page = <Centered>Page not found.</Centered>;

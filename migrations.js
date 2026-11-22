@@ -38,6 +38,14 @@ const STATEMENTS = [
   `ALTER TABLE bookings ADD CONSTRAINT bookings_sitting_id_fkey FOREIGN KEY (sitting_id) REFERENCES sittings(id) ON DELETE SET NULL`,
 
   `CREATE INDEX IF NOT EXISTS idx_sittings_tenant ON sittings(tenant_id)`,
+
+  // Dorsia master login (sees every restaurant)
+  `CREATE TABLE IF NOT EXISTS platform_admins (
+     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     email         TEXT UNIQUE NOT NULL,
+     password_hash TEXT NOT NULL,
+     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+   )`,
 ];
 
 async function runMigrations() {

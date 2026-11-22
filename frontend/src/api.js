@@ -8,14 +8,21 @@ export class ApiError extends Error {
   }
 }
 
+// The Dorsia master login is saved under this name.
+export const PLATFORM = "__platform";
+
 export function makeApi(slug, getToken, onUnauthorized) {
+  return makeApiAt(`/api/${encodeURIComponent(slug)}`, getToken, onUnauthorized);
+}
+
+export function makeApiAt(base, getToken, onUnauthorized) {
   async function request(method, path, body) {
     const headers = { "Content-Type": "application/json" };
     const token = getToken && getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
     let res;
     try {
-      res = await fetch(`/api/${encodeURIComponent(slug)}${path}`, {
+      res = await fetch(`${base}${path}`, {
         method,
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),

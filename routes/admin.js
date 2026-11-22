@@ -6,6 +6,7 @@ const pool = require("../db");
 const { sittingOut, elementOut, bookingOut } = require("../lib/shapes");
 const { BOOKING_SELECT, isValidTime } = require("../lib/bookingCore");
 const { todayIn } = require("../lib/availability");
+const { requireOwner } = require("../middleware/auth");
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -38,7 +39,7 @@ router.get("/state", async (req, res) => {
         depositPerHead: Number(t.deposit_per_head),
         today: todayIn(t.timezone),
       },
-      user: { email: req.user.email, role: req.user.role },
+      user: { email: req.user.email, role: req.user.role, master: req.user.master },
       sittings: sittings.rows.map(sittingOut),
       floorElements: elements.rows.map(elementOut),
       bookings,
@@ -61,7 +62,7 @@ router.get("/bookings", async (req, res) => {
 });
 
 // PUT /api/:tenantSlug/admin/settings { terms }
-router.put("/settings", async (req, res) => {
+router.put("/settings", requireOwner, async (req, res) => {
   const { terms } = req.body || {};
   if (typeof terms !== "string") return res.status(400).json({ error: "Missing terms" });
   try {
@@ -74,7 +75,7 @@ router.put("/settings", async (req, res) => {
 });
 
 // PUT /api/:tenantSlug/admin/sittings — replaces the full list of booking times
-router.put("/sittings", async (req, res) => {
+router.put("/sittings", requireOwner, async (req, res) => {
   const list = req.body;
   if (!Array.isArray(list) || list.length > 200) return res.status(400).json({ error: "Invalid booking times" });
   for (const s of list) {
@@ -119,7 +120,7 @@ function num(v, fallback = 0) {
 }
 
 // PUT /api/:tenantSlug/admin/floor { elements, roomSize, sections } — replaces the full floor plan
-router.put("/floor", async (req, res) => {
+router.put("/floor", requireOwner, async (req, res) => {
   const { elements, roomSize, sections } = req.body || {};
   if (!Array.isArray(elements) || elements.length > 500) return res.status(400).json({ error: "Invalid floor plan" });
   for (const el of elements) {

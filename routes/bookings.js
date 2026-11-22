@@ -6,6 +6,7 @@ const pool = require("../db");
 const { bookingOut } = require("../lib/shapes");
 const { newReference, DEFAULT_DURATION } = require("../lib/availability");
 const { refundPayment } = require("../lib/square");
+const { requireOwner } = require("../middleware/auth");
 const {
   BookingError,
   resolveCustomer,
@@ -179,7 +180,7 @@ router.delete("/:id", async (req, res) => {
 });
 
 // POST /api/:tenantSlug/admin/bookings/:id/refund — gives a card deposit back through Square
-router.post("/:id/refund", async (req, res) => {
+router.post("/:id/refund", requireOwner, async (req, res) => {
   try {
     const b = await fetchBooking(pool, req.tenant.id, req.params.id);
     if (!b) return res.status(404).json({ error: "Booking not found" });
