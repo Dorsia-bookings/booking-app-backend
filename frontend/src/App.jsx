@@ -171,8 +171,19 @@ const DEFAULT_FLOOR_ELEMENTS = [
 
 function coversBookedForSitting(bookings, date, sittingId, excludeBookingId) {
   return bookings
-    .filter((b) => b.date === date && b.sitting === sittingId && b.id !== excludeBookingId)
+    .filter((b) => b.date === date && b.sitting === sittingId && (excludeBookingId == null || b.id !== excludeBookingId))
     .reduce((sum, b) => sum + b.partySize, 0);
+}
+// First free table for a party at a booking time, or null if that time is full for them.
+function freeTableForSitting(tables, bookings, sittings, date, sittingId, partySize) {
+  const s = sittings.find((x) => x.id === sittingId);
+  if (!s) return null;
+  if (s.maxCovers != null && coversBookedForSitting(bookings, date, sittingId) + partySize > s.maxCovers) return null;
+  const draft = { date, sitting: sittingId, customTime24: null, durationMinutes: DEFAULT_BOOKING_DURATION };
+  const fits = tables.filter(
+    (t) => tableFitsParty(t, partySize) && !bookings.some((b) => bookingsOverlap({ ...draft, tableId: t.id }, b, sittings))
+  );
+  return sortByPriority(fits)[0] || null;
 }
 function tableFitsParty(table, partySize) {
   const min = table.minParty ?? 1;
@@ -272,8 +283,10 @@ function Badge({ tone, children }) {
 
 /* ============ CUSTOMER BOOKING FLOW ============ */
 
-export function CustomerBooking({ bookings, tables, sittings, terms, square, onSubmit }) {
+export function CustomerBooking({ bookings, tables, sittings, terms, square, onSubmit, onJoinWaitlist }) {
   const [step, setStep] = useState(1);
+  // Set when the chosen time is full, so the guest can join the waitlist instead.
+  const [full, setFull] = useState(false);
   const [form, setForm] = useState(() => {
     const date = todayISO();
     return {
@@ -303,6 +316,32 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
 
   function set(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
+    if (field === "date" || field === "sitting" || field === "partySize") setFull(false);
+  }
+
+  async function joinWaitlist() {
+    setError("");
+    if (!form.name.trim() || !form.phone.trim()) {
+      setError("Please add your name and mobile number.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await onJoinWaitlist({
+        date: form.date,
+        sittingId: form.sitting,
+        partySize: form.partySize,
+        name: form.name.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim(),
+        notes: form.notes,
+      });
+      setStep("waitlisted");
+    } catch (e) {
+      setError(e.message || "Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function findTable() {
@@ -314,6 +353,7 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
 
   function handleStep1Continue() {
     setError("");
+    setFull(false);
     if (!form.sitting) {
       setError("There are no booking times on this day. Please choose another date.");
       return;
@@ -323,12 +363,14 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
       const already = coversBookedForSitting(bookings, form.date, form.sitting);
       if (already + form.partySize > activeSitting.maxCovers) {
         setError(`That time is fully booked for the number of guests we can seat. Try another time.`);
+        setFull(true);
         return;
       }
     }
     const table = findTable();
     if (!table) {
       setError(`Fully booked for ${sittingLabel} on ${form.date}. Try another date or sitting.`);
+      setFull(true);
       return;
     }
     setStep(2);
@@ -371,7 +413,10 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
       setStep(4);
     } catch (e) {
       setError(e.message || "Something went wrong. Please try again.");
-      if (e.status === 409) setStep(1);
+      if (e.status === 409) {
+        setStep(1);
+        setFull(true);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -404,7 +449,7 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
           <div style={{ height: 1, width: 48, background: "#B8894A", margin: "16px auto" }} />
         </div>
 
-        {step < 4 && (
+        {typeof step === "number" && step < 4 && (
           <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 32 }}>
             {[1, 2, 3].filter((n) => n !== 3 || needsDeposit).map((n, i, arr) => (
               <div
@@ -478,6 +523,59 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
             </Field>
             {error && <ErrorText>{error}</ErrorText>}
             <SubmitButton onClick={handleStep1Continue}>Next</SubmitButton>
+            {full && onJoinWaitlist && form.sitting && (
+              <div style={{ marginTop: 16, textAlign: "center" }}>
+                <div style={{ fontSize: 13, color: "#5B5145", marginBottom: 10 }}>
+                  Want this time anyway? We'll text you if a table comes free.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setError(""); setStep("waitlist"); }}
+                  style={{ ...submitBtnStyle, width: "100%", background: "transparent", color: "#6B2737", border: "1.5px solid #6B2737" }}
+                >
+                  Join the waitlist
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {step === "waitlist" && (
+          <div style={cardStyle}>
+            <SummaryStrip date={form.date} sittingLabel={sittingLabel} partySize={form.partySize} />
+            <div style={{ fontSize: 13, color: "#5B5145", lineHeight: 1.6, marginBottom: 18 }}>
+              This time is full. Join the waitlist and we'll text you if a table comes free. You'll have a short time to confirm it.
+            </div>
+            <Field label="Full name">
+              <input value={form.name} onChange={(e) => set("name", e.target.value)} style={inputStyle} />
+            </Field>
+            <Field label="Mobile">
+              <input type="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} style={inputStyle} />
+            </Field>
+            <Field label="Email (optional)">
+              <input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} style={inputStyle} />
+            </Field>
+            {error && <ErrorText>{error}</ErrorText>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <SubmitButton onClick={joinWaitlist} disabled={submitting}>
+                {submitting ? "Joining..." : "Join the waitlist"}
+              </SubmitButton>
+              <BackButton onClick={() => { setError(""); setStep(1); }} />
+            </div>
+          </div>
+        )}
+
+        {step === "waitlisted" && (
+          <div style={{ ...cardStyle, textAlign: "center" }}>
+            <h2 className="wv-display" style={{ fontSize: 24, margin: "0 0 10px", color: "#1B2430" }}>You're on the waitlist</h2>
+            <div style={{ textAlign: "left", background: "#FBF8F0", borderRadius: 8, padding: 16, marginBottom: 20 }}>
+              <Row label="Date" value={friendlyDate(form.date)} />
+              <Row label="Time" value={sittingTime} />
+              <Row label="Guests" value={form.partySize} />
+            </div>
+            <div style={{ fontSize: 13, color: "#5B5145", lineHeight: 1.6 }}>
+              If a table comes free we'll text {form.phone} with a link to confirm it. This isn't a booking yet.
+            </div>
           </div>
         )}
 
@@ -935,11 +1033,27 @@ function statusOf(booking) {
   return { tone: "success", label: "Confirmed" };
 }
 
-export function OwnerDashboard({ bookings, floorElements, setFloorElements, roomSize, setRoomSize, sittings, setSittings, terms, setTerms, sections, setSections, addBooking, removeBooking, updateBooking, toggleArrival, setArrivalAll, customerNotes, setCustomerNote, refundDeposit, onLogout, userEmail, bookingPageUrl, isOwner = true, roleLabel, onOpenTeam, onChangePassword, allRestaurantsUrl }) {
+export function OwnerDashboard({ bookings, floorElements, setFloorElements, roomSize, setRoomSize, sittings, setSittings, terms, setTerms, sections, setSections, addBooking, removeBooking, updateBooking, toggleArrival, setArrivalAll, customerNotes, setCustomerNote, refundDeposit, onLogout, userEmail, bookingPageUrl, isOwner = true, roleLabel, onOpenTeam, onChangePassword, allRestaurantsUrl, waitlist, waitlistActions }) {
   const [date, setDate] = useState(todayISO());
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
+  const [walkInPrefill, setWalkInPrefill] = useState(null);
   const [sitting, setSitting] = useState(sittings[0]?.id || "");
   const [view, setView] = useState("timeline");
-  const [theme, setTheme] = useState("dark");
+  // Light/dark choice is remembered in this browser.
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem("dorsia-theme") === "light" ? "light" : "dark";
+    } catch {
+      return "dark";
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("dorsia-theme", theme);
+    } catch {
+      /* storage unavailable */
+    }
+  }, [theme]);
   const [selectedTable, setSelectedTable] = useState(null);
   const [customersOpen, setCustomersOpen] = useState(false);
   const [customerPortalInitialEmail, setCustomerPortalInitialEmail] = useState(null);
@@ -1002,6 +1116,21 @@ export function OwnerDashboard({ bookings, floorElements, setFloorElements, room
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z" /><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" /><path d="M2 8l3 3-3 3" /></svg>
                 Walk-in
               </button>
+              {waitlist && (() => {
+                const waitingCount = waitlist.entries.filter(
+                  (e) => e.date === date && ["waiting", "offered", "notified"].includes(e.status)
+                ).length;
+                return (
+                  <button onClick={() => setWaitlistOpen(true)} className="lib-pill" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    Waitlist
+                    {waitingCount > 0 && (
+                      <span className="wv-mono" style={{ background: "var(--warning)", color: "#000", borderRadius: 999, padding: "0 7px", fontSize: 11, fontWeight: 700 }}>
+                        {waitingCount}
+                      </span>
+                    )}
+                  </button>
+                );
+              })()}
               <button
                 onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                 className="lib-pill"
@@ -1481,11 +1610,33 @@ export function OwnerDashboard({ bookings, floorElements, setFloorElements, room
         <WalkInModal
           bookings={bookings}
           tables={tables}
+          initial={walkInPrefill}
           onCreate={(booking) => {
             addBooking(booking);
+            if (walkInPrefill?.entryId && waitlistActions) waitlistActions.setStatus(walkInPrefill.entryId, "seated");
             setWalkInOpen(false);
+            setWalkInPrefill(null);
           }}
-          onClose={() => setWalkInOpen(false)}
+          onClose={() => { setWalkInOpen(false); setWalkInPrefill(null); }}
+        />
+      )}
+
+      {waitlistOpen && waitlist && (
+        <WaitlistPanel
+          waitlist={waitlist}
+          actions={waitlistActions}
+          date={date}
+          isToday={date === todayISO()}
+          sittings={sittings}
+          tables={tables}
+          bookings={bookings}
+          isOwner={isOwner}
+          onSeatWalkIn={(entry) => {
+            setWalkInPrefill({ entryId: entry.id, name: entry.name, partySize: entry.partySize, phone: entry.phone });
+            setWaitlistOpen(false);
+            setWalkInOpen(true);
+          }}
+          onClose={() => setWaitlistOpen(false)}
         />
       )}
 
@@ -1990,10 +2141,10 @@ const editorInputStyle = {
   boxSizing: "border-box",
 };
 
-function WalkInModal({ bookings, tables, onCreate, onClose }) {
+function WalkInModal({ bookings, tables, initial, onCreate, onClose }) {
   useEscapeToClose(() => onClose());
-  const [partySize, setPartySize] = useState(2);
-  const [name, setName] = useState("");
+  const [partySize, setPartySize] = useState(initial?.partySize || 2);
+  const [name, setName] = useState(initial?.name || "");
   const [tableId, setTableId] = useState("");
   const [error, setError] = useState("");
 
@@ -2017,7 +2168,7 @@ function WalkInModal({ bookings, tables, onCreate, onClose }) {
       partySize,
       name: name.trim() || "Walk-in",
       email: "",
-      phone: "",
+      phone: initial?.phone || "",
       tableId: table.id,
       depositRequired: false,
       depositAmount: 0,
@@ -3786,6 +3937,273 @@ function CustomerPortal({ bookings, tables, sittings, customerNotes, onSaveNote,
             </>
           )}
         </div>
+      </div>
+    </>
+  );
+}
+
+/* ---------- Waitlist ---------- */
+
+function minutesSince(iso) {
+  return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+}
+
+const WAITLIST_STATUS = {
+  waiting: { label: "Waiting", color: "var(--text-dim)" },
+  offered: { label: "Offer sent", color: "var(--warning)" },
+  notified: { label: "Texted", color: "var(--warning)" },
+  booked: { label: "Booked", color: "var(--success)" },
+  seated: { label: "Seated", color: "var(--success)" },
+  expired: { label: "Offer ran out", color: "var(--danger)" },
+  declined: { label: "Said no", color: "var(--danger)" },
+};
+
+function WaitlistPanel({ waitlist, actions, date, isToday, sittings, tables, bookings, isOwner, onSeatWalkIn, onClose }) {
+  useEscapeToClose(() => onClose());
+  const todaysSittings = sittingsForDate(sittings, date);
+  const [kind, setKind] = useState(isToday ? "walkin" : "waitlist");
+  const [form, setForm] = useState({ name: "", phone: "", partySize: 2, sittingId: todaysSittings[0]?.id || "" });
+  const [busy, setBusy] = useState(null);
+  const [error, setError] = useState("");
+  const [mode, setMode] = useState(waitlist.settings.mode);
+  const [minutes, setMinutes] = useState(waitlist.settings.offerMinutes);
+  const [, tick] = useState(0);
+
+  // Keep "waiting 12 min" and offer countdowns current.
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  const dayEntries = waitlist.entries.filter((e) => e.date === date);
+  const walkIns = dayEntries.filter((e) => e.kind === "walkin" && e.status !== "seated");
+  const waiting = dayEntries.filter((e) => e.kind === "waitlist");
+
+  async function act(id, fn) {
+    setError("");
+    setBusy(id);
+    try {
+      await fn();
+    } catch (e) {
+      setError(e.message || "Something went wrong.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function add() {
+    if (!form.name.trim()) return setError("Add a name.");
+    if (kind === "walkin" && !form.phone.trim()) return setError("Add a mobile number so you can text them.");
+    if (kind === "waitlist" && !form.sittingId) return setError("Pick a booking time.");
+    act("add", async () => {
+      await actions.add({ kind, date, name: form.name.trim(), phone: form.phone.trim(), partySize: form.partySize, sittingId: form.sittingId });
+      setForm((f) => ({ ...f, name: "", phone: "", partySize: 2 }));
+    });
+  }
+
+  const smallBtn = (primary) => ({
+    padding: "6px 10px",
+    borderRadius: 7,
+    border: primary ? "none" : "1px solid var(--border)",
+    background: primary ? "var(--accent)" : "var(--panel-raised)",
+    color: primary ? "#fff" : "var(--text)",
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    whiteSpace: "nowrap",
+  });
+
+  function StatusTag({ entry }) {
+    const st = WAITLIST_STATUS[entry.status] || { label: entry.status, color: "var(--text-dim)" };
+    let extra = "";
+    if (entry.status === "offered" && entry.offerExpiresAt) {
+      const left = Math.max(0, Math.round((new Date(entry.offerExpiresAt).getTime() - Date.now()) / 60000));
+      extra = ` · ${left} min left`;
+    }
+    if (entry.status === "notified" && entry.notifiedAt) extra = ` ${minutesSince(entry.notifiedAt)} min ago`;
+    return <span style={{ fontSize: 11, fontWeight: 700, color: st.color }}>{st.label}{extra}</span>;
+  }
+
+  function EntryRow({ entry, children, free }) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderTop: "1px solid var(--border)" }}>
+        <div className="wv-mono" style={{ width: 28, textAlign: "center", fontSize: 15, fontWeight: 700 }}>{entry.partySize}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name}</div>
+          <div style={{ fontSize: 11, color: "var(--text-dim)", display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {entry.phone && <span>{entry.phone}</span>}
+            <span>{entry.kind === "walkin" ? `waiting ${minutesSince(entry.createdAt)} min` : `joined ${new Date(entry.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}</span>
+            <StatusTag entry={entry} />
+            {free && <span style={{ fontWeight: 700, color: "var(--success)" }}>Table free</span>}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>{children}</div>
+      </div>
+    );
+  }
+
+  const removeBtn = (entry) => (
+    <button style={smallBtn(false)} disabled={busy === entry.id} onClick={() => act(entry.id, () => actions.setStatus(entry.id, "removed"))} title="Remove from list">
+      Remove
+    </button>
+  );
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 49 }} />
+      <div
+        style={{
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          zIndex: 50,
+          width: 600,
+          maxWidth: "calc(100vw - 40px)",
+          maxHeight: "calc(100vh - 40px)",
+          overflowY: "auto",
+          background: "var(--panel)",
+          border: "1px solid var(--border)",
+          borderRadius: 14,
+          boxShadow: "0 16px 48px rgba(0,0,0,0.55)",
+          padding: 22,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>Waitlist</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-dim)", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 4 }}>✕</button>
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 18 }}>
+          {friendlyDate(date)} · {waitlist.settings.mode === "auto" ? "Freed tables are offered automatically" : "You choose who gets offered a freed table"}
+        </div>
+
+        {/* Add someone */}
+        <div style={{ background: "var(--panel-raised)", border: "1px solid var(--border)", borderRadius: 10, padding: 14, marginBottom: 20 }}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+            {isToday && (
+              <button className={`lib-pill${kind === "walkin" ? " is-active" : ""}`} onClick={() => setKind("walkin")}>Walk-in queue</button>
+            )}
+            <button className={`lib-pill${kind === "waitlist" ? " is-active" : ""}`} onClick={() => setKind("waitlist")}>Waiting for a time</button>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div style={{ flex: "1 1 140px" }}>
+              <label style={modalLabelStyle}>Name</label>
+              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={modalInputStyle} />
+            </div>
+            <div style={{ flex: "1 1 120px" }}>
+              <label style={modalLabelStyle}>Mobile</label>
+              <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} style={modalInputStyle} />
+            </div>
+            <div style={{ flex: "0 0 70px" }}>
+              <label style={modalLabelStyle}>Guests</label>
+              <input type="number" min={1} max={50} value={form.partySize} onChange={(e) => setForm({ ...form, partySize: Math.max(1, parseInt(e.target.value, 10) || 1) })} style={modalInputStyle} />
+            </div>
+            {kind === "waitlist" && (
+              <div style={{ flex: "0 0 110px" }}>
+                <label style={modalLabelStyle}>Time</label>
+                <select value={form.sittingId} onChange={(e) => setForm({ ...form, sittingId: e.target.value })} style={modalInputStyle}>
+                  {todaysSittings.map((s) => (
+                    <option key={s.id} value={s.id}>{sittingDisplay(s)}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <button style={{ ...smallBtn(true), padding: "9px 14px" }} disabled={busy === "add"} onClick={add}>Add</button>
+          </div>
+        </div>
+
+        {error && (
+          <div style={{ fontSize: 13, color: "var(--danger)", background: "rgba(255,69,58,0.12)", border: "1px solid var(--danger)", borderRadius: 8, padding: "8px 12px", marginBottom: 12 }}>
+            {error}
+          </div>
+        )}
+
+        {isToday && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", letterSpacing: "0.05em", marginBottom: 4 }}>WALK-IN QUEUE</div>
+            {walkIns.length === 0 && <div style={{ fontSize: 13, color: "var(--text-dim)", padding: "8px 0" }}>Nobody waiting.</div>}
+            {walkIns.map((e) => (
+              <EntryRow key={e.id} entry={e}>
+                <button style={smallBtn(e.status !== "notified")} disabled={busy === e.id || !e.phone} onClick={() => act(e.id, () => actions.notify(e.id))}>
+                  {e.status === "notified" ? "Text again" : "Table ready"}
+                </button>
+                <button style={smallBtn(false)} onClick={() => onSeatWalkIn(e)}>Seat</button>
+                {removeBtn(e)}
+              </EntryRow>
+            ))}
+          </div>
+        )}
+
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", letterSpacing: "0.05em", marginBottom: 4 }}>WAITING FOR A BOOKING TIME</div>
+          {waiting.length === 0 && <div style={{ fontSize: 13, color: "var(--text-dim)", padding: "8px 0" }}>Nobody on the waitlist for this day.</div>}
+          {todaysSittings
+            .map((s) => ({ s, list: waiting.filter((e) => e.sitting === s.id) }))
+            .filter((g) => g.list.length)
+            .map(({ s, list }) => (
+              <div key={s.id} style={{ marginBottom: 8 }}>
+                <div className="wv-mono" style={{ fontSize: 12, fontWeight: 700, padding: "6px 0" }}>{sittingDisplay(s)}</div>
+                {list.map((e) => {
+                  const canOffer = ["waiting", "expired", "declined"].includes(e.status);
+                  const free = canOffer && Boolean(freeTableForSitting(tables, bookings, sittings, e.date, e.sitting, e.partySize));
+                  return (
+                    <EntryRow key={e.id} entry={e} free={free}>
+                      {canOffer && (
+                        <button style={smallBtn(free)} disabled={busy === e.id} onClick={() => act(e.id, () => actions.offer(e.id))}>
+                          Offer table
+                        </button>
+                      )}
+                      {e.status !== "booked" && removeBtn(e)}
+                    </EntryRow>
+                  );
+                })}
+              </div>
+            ))}
+        </div>
+
+        {isOwner && (
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16, marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", letterSpacing: "0.05em", marginBottom: 10 }}>WHEN A TABLE COMES FREE</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <button className={`lib-pill${mode === "manual" ? " is-active" : ""}`} onClick={() => setMode("manual")}>Staff choose who to offer</button>
+              <button className={`lib-pill${mode === "auto" ? " is-active" : ""}`} onClick={() => setMode("auto")}>Offer automatically</button>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, fontSize: 13 }}>
+              Guests have
+              <input type="number" min={5} max={240} value={minutes} onChange={(e) => setMinutes(e.target.value)} style={{ ...modalInputStyle, width: 70 }} />
+              minutes to confirm
+              <button
+                style={{ ...smallBtn(true), marginLeft: "auto" }}
+                disabled={busy === "settings" || (mode === waitlist.settings.mode && Number(minutes) === waitlist.settings.offerMinutes)}
+                onClick={() => act("settings", () => actions.saveSettings({ mode, offerMinutes: Number(minutes) }))}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!waitlist.smsLive && (
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--warning)", letterSpacing: "0.05em", marginBottom: 6 }}>
+              TEST MODE: TEXTS ARE SHOWN HERE, NOT SENT
+            </div>
+            {waitlist.texts.length === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)" }}>No texts yet.</div>}
+            {waitlist.texts.slice(0, 5).map((t, i) => (
+              <div key={i} style={{ fontSize: 12, padding: "6px 0", borderTop: i ? "1px solid var(--border)" : "none", wordBreak: "break-word" }}>
+                <span style={{ color: "var(--text-dim)" }}>To {t.to}: </span>
+                {t.body.split(/(https?:\/\/\S+)/).map((part, j) =>
+                  /^https?:\/\//.test(part) ? (
+                    <a key={j} href={part} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>{part}</a>
+                  ) : (
+                    part
+                  )
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </>
   );

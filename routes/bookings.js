@@ -7,6 +7,7 @@ const { bookingOut } = require("../lib/shapes");
 const { newReference, DEFAULT_DURATION } = require("../lib/availability");
 const { refundPayment } = require("../lib/square");
 const { requireOwner } = require("../middleware/auth");
+const { autoOfferForSlot } = require("../lib/waitlist");
 const {
   BookingError,
   resolveCustomer,
@@ -169,11 +170,14 @@ router.delete("/:id", async (req, res) => {
   try {
     const result = await pool.query(
       `UPDATE bookings SET status = 'cancelled', updated_at = now()
-       WHERE tenant_id = $1 AND id = $2 AND status = 'confirmed' RETURNING id`,
+       WHERE tenant_id = $1 AND id = $2 AND status = 'confirmed' RETURNING id, booking_date, sitting_id`,
       [req.tenant.id, req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: "Booking not found" });
     res.json({ ok: true });
+    // A table has come free: in automatic mode, offer it to the first guest waiting.
+    const { booking_date, sitting_id } = result.rows[0];
+    autoOfferForSlot(req.tenant.id, booking_date, sitting_id).catch((e) => console.error("Auto offer failed:", e));
   } catch (err) {
     sendError(res, err, "Could not cancel the booking");
   }

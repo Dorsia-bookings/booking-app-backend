@@ -14,17 +14,24 @@ const bookingsRouter = require("./routes/bookings");
 const customersRouter = require("./routes/customers");
 const teamRouter = require("./routes/team");
 const platformRouter = require("./routes/platform");
+const waitlistRouter = require("./routes/waitlist");
+const { rememberBase, startWaitlistTimer } = require("./lib/waitlist");
 
 const app = express();
 app.set("trust proxy", 1); // Render sits in front of the app; needed for correct visitor IPs
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
+app.use((req, res, next) => {
+  rememberBase(req);
+  next();
+});
 
 // Every restaurant's routes hang off /api/:tenantSlug/...
 // e.g. /api/don-camillo/public/config, /api/don-camillo/admin/state
 app.use("/api/platform", platformRouter);
 app.use("/api/:tenantSlug/public", resolveTenant, publicRouter);
 app.use("/api/:tenantSlug/auth", resolveTenant, authRouter);
+app.use("/api/:tenantSlug/admin/waitlist", resolveTenant, requireAuth, waitlistRouter);
 app.use("/api/:tenantSlug/admin/bookings", resolveTenant, requireAuth, bookingsRouter);
 app.use("/api/:tenantSlug/admin", resolveTenant, requireAuth, adminRouter);
 app.use("/api/:tenantSlug/customers", resolveTenant, requireAuth, customersRouter);
@@ -45,6 +52,7 @@ runMigrations()
   .then(runSeed)
   .then(() => {
     if (!process.env.JWT_SECRET) console.warn("WARNING: JWT_SECRET is not set, so nobody can log in.");
+    startWaitlistTimer();
     app.listen(PORT, () => {
       console.log(`Booking API running on port ${PORT}`);
     });

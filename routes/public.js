@@ -6,6 +6,8 @@ const { sittingOut, slotOut } = require("../lib/shapes");
 const { todayIn, newReference, DEFAULT_DURATION } = require("../lib/availability");
 const { publicSquareConfig, squareConfig, chargeDeposit, refundPayment } = require("../lib/square");
 const { BookingError, resolveCustomer, lockAndLoad, placeBooking, isValidDate } = require("../lib/bookingCore");
+const { tooManyAttempts, recordFailure } = require("../lib/rateLimit");
+const { findOffer, acceptOffer, declineOffer, time12 } = require("../lib/waitlist");
 
 // GET /api/:tenantSlug/public/config — restaurant name, times, tables, terms, deposit rules
 router.get("/config", async (req, res) => {
@@ -154,6 +156,91 @@ router.post("/bookings", async (req, res) => {
     res.status(500).json({ error: "Sorry, something went wrong saving your booking. Please try again." });
   } finally {
     client.release();
+  }
+});
+
+// POST /api/:tenantSlug/public/waitlist — a guest joins the waitlist for a full booking time
+router.post("/waitlist", async (req, res) => {
+  const t = req.tenant;
+  const { date, sittingId, partySize, name, phone, email, notes } = req.body || {};
+  const size = parseInt(partySize, 10);
+  const limitKey = `waitlist:${t.id}:${req.ip}`;
+  if (tooManyAttempts(limitKey)) return res.status(429).json({ error: "Too many requests. Please try again later." });
+  if (!isValidDate(date) || !sittingId || !size || size < 1 || size > 50) {
+    return res.status(400).json({ error: "Please choose a date, time and party size." });
+  }
+  if (!String(name || "").trim() || !String(phone || "").trim()) {
+    return res.status(400).json({ error: "Please add your name and mobile number." });
+  }
+  if (date < todayIn(t.timezone)) return res.status(400).json({ error: "That date has already passed." });
+  try {
+    const sitting = await pool.query("SELECT id FROM sittings WHERE tenant_id = $1 AND id = $2", [t.id, sittingId]);
+    if (!sitting.rows.length) return res.status(400).json({ error: "That booking time no longer exists." });
+    recordFailure(limitKey); // counts joins, not failures: at most 10 per 15 minutes from one connection
+    const cleanPhone = String(phone).trim().slice(0, 40);
+    const existing = await pool.query(
+      `SELECT id FROM waitlist_entries WHERE tenant_id = $1 AND booking_date = $2 AND sitting_id = $3
+         AND phone = $4 AND status = 'waiting'`,
+      [t.id, date, sittingId, cleanPhone]
+    );
+    if (existing.rows.length) {
+      await pool.query("UPDATE waitlist_entries SET party_size = $2, name = $3, updated_at = now() WHERE id = $1", [
+        existing.rows[0].id, size, String(name).trim().slice(0, 200),
+      ]);
+    } else {
+      await pool.query(
+        `INSERT INTO waitlist_entries (tenant_id, kind, name, phone, email, party_size, booking_date, sitting_id, notes)
+         VALUES ($1,'waitlist',$2,$3,$4,$5,$6,$7,$8)`,
+        [t.id, String(name).trim().slice(0, 200), cleanPhone, String(email || "").trim().toLowerCase() || null,
+          size, date, sittingId, String(notes || "").slice(0, 1000)]
+      );
+    }
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Sorry, something went wrong. Please try again." });
+  }
+});
+
+// GET /api/:tenantSlug/public/offer/:token — what the text-message link shows
+router.get("/offer/:token", async (req, res) => {
+  try {
+    const o = await findOffer(req.tenant.id, req.params.token);
+    if (!o) return res.status(404).json({ error: "This link isn't valid." });
+    const expired = o.status === "expired" || (o.status === "offered" && new Date(o.offer_expires_at) < new Date());
+    res.json({
+      restaurant: req.tenant.name,
+      name: o.name,
+      date: o.booking_date,
+      time: time12(o.time_of_day),
+      partySize: o.party_size,
+      status: expired ? "expired" : o.status,
+      expiresAt: o.offer_expires_at,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Could not load this offer" });
+  }
+});
+
+router.post("/offer/:token/accept", async (req, res) => {
+  try {
+    res.json(await acceptOffer(req.tenant, req.params.token));
+  } catch (err) {
+    if (err instanceof BookingError) return res.status(err.status).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Sorry, something went wrong. Please try again." });
+  }
+});
+
+router.post("/offer/:token/decline", async (req, res) => {
+  try {
+    await declineOffer(req.tenant, req.params.token);
+    res.json({ ok: true });
+  } catch (err) {
+    if (err instanceof BookingError) return res.status(err.status).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Sorry, something went wrong. Please try again." });
   }
 });
 

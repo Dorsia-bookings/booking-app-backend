@@ -8,6 +8,7 @@ import { Login, TeamModal, PasswordModal, PlatformApp, darkButton } from "./acco
    /                      → Dorsia holding page
    /<restaurant>          → public booking page, e.g. /don-camillo
    /<restaurant>/admin    → restaurant dashboard (owner or staff login)
+   /<restaurant>/offer/x  → waitlist offer link sent by text
    /admin                 → Dorsia master page (all restaurants)       */
 
 function Centered({ children, dark }) {
@@ -82,11 +83,14 @@ function CustomerApp({ slug }) {
     [api, refreshSlots]
   );
 
+  const joinWaitlist = useCallback((details) => api.post("/public/waitlist", details), [api]);
+
   if (error) return <Centered>{error}</Centered>;
   if (!config) return <Centered>Loading...</Centered>;
   return (
     <div style={{ minHeight: "100vh", background: "#F3ECDD" }}>
       <CustomerBooking
+        onJoinWaitlist={joinWaitlist}
         bookings={slots}
         tables={config.tables}
         sittings={config.sittings}
@@ -95,6 +99,100 @@ function CustomerApp({ slug }) {
         onSubmit={submit}
       />
     </div>
+  );
+}
+
+/* ---------- Waitlist offer link ---------- */
+
+function friendlyDay(iso) {
+  return new Date(iso + "T00:00:00").toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" });
+}
+
+const offerButton = {
+  width: "100%",
+  padding: "13px",
+  borderRadius: 8,
+  border: "none",
+  background: "#6B2737",
+  color: "#FBF8F0",
+  fontSize: 15,
+  fontWeight: 600,
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
+
+function OfferPage({ slug, token }) {
+  const api = useRef(makeApi(slug)).current;
+  const [offer, setOffer] = useState(null);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api
+      .get(`/public/offer/${encodeURIComponent(token)}`)
+      .then((o) => {
+        setOffer(o);
+        document.title = `${o.restaurant} · Table offer`;
+      })
+      .catch((e) => setError(e.message));
+  }, [api, token]);
+
+  async function answer(action) {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await api.post(`/public/offer/${encodeURIComponent(token)}/${action}`);
+      setDone(action === "accept" ? { accepted: true, ...r } : { accepted: false });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!offer) return <Centered>{error || "Loading..."}</Centered>;
+  const card = { background: "#FFFDF8", border: "1px solid #E7DBC0", borderRadius: 14, padding: 28, textAlign: "left" };
+  return (
+    <Centered>
+      <div className="wv-mono" style={{ fontSize: 11, letterSpacing: "0.2em", color: "#8B7A5E", marginBottom: 10 }}>WAITLIST</div>
+      <h1 className="wv-display" style={{ fontSize: 34, fontWeight: 500, margin: "0 0 24px", color: "#1B2430" }}>{offer.restaurant}</h1>
+      <div style={card}>
+        <div style={{ fontSize: 15, marginBottom: 14 }}>
+          {done?.accepted || offer.status === "booked" ? "Your table is booked." : `Hi ${offer.name}, a table has come free:`}
+        </div>
+        <div style={{ background: "#FBF8F0", borderRadius: 8, padding: 14, marginBottom: 18, fontSize: 14, lineHeight: 1.8 }}>
+          <div>{friendlyDay(offer.date)}</div>
+          <div>{offer.time}</div>
+          <div>{offer.partySize} {offer.partySize === 1 ? "guest" : "guests"}</div>
+          {done?.reference && <div className="wv-mono" style={{ color: "#8B7A5E" }}>{done.reference}</div>}
+        </div>
+        {error && <div style={{ color: "#963B3B", fontSize: 13, marginBottom: 14 }}>{error}</div>}
+        {done ? (
+          <div style={{ fontSize: 13, color: "#5B5145", lineHeight: 1.6 }}>
+            {done.accepted
+              ? done.depositRequired
+                ? `Confirmed. A $${done.depositAmount} deposit applies; the restaurant will be in touch about it.`
+                : "Confirmed. See you then."
+              : "No problem, we've let the table go to the next person."}
+          </div>
+        ) : offer.status === "offered" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <button style={offerButton} disabled={busy} onClick={() => answer("accept")}>{busy ? "Confirming..." : "Confirm this table"}</button>
+            <button style={{ ...offerButton, background: "transparent", color: "#8B7A5E", border: "1.5px solid #DCD0B4" }} disabled={busy} onClick={() => answer("decline")}>
+              No thanks
+            </button>
+            <div style={{ fontSize: 12, color: "#8B7A5E", textAlign: "center" }}>
+              Please confirm by {new Date(offer.expiresAt).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" })}
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, color: "#5B5145" }}>
+            {offer.status === "booked" ? "See you then." : "Sorry, this offer is no longer available."}
+          </div>
+        )}
+      </div>
+    </Centered>
   );
 }
 
@@ -153,6 +251,7 @@ function AdminApp({ slug }) {
   const [sittings, setSittingsState] = useState([]);
   const [terms, setTermsState] = useState("");
   const [customers, setCustomers] = useState([]);
+  const [waitlist, setWaitlist] = useState(null);
 
   const bookingsRef = useRef([]);
   bookingsRef.current = bookings;
@@ -190,10 +289,20 @@ function AdminApp({ slug }) {
       });
   }, [token, loadState]);
 
-  // Pick up new online bookings every 30 seconds.
+  const loadWaitlist = useCallback(async () => {
+    try {
+      setWaitlist(await api.get("/admin/waitlist"));
+    } catch {
+      /* try again next time */
+    }
+  }, [api]);
+
+  // Pick up new online bookings and waitlist changes every 30 seconds.
   useEffect(() => {
     if (!token || !loaded) return;
+    loadWaitlist();
     const id = setInterval(async () => {
+      loadWaitlist();
       if (pending.current > 0) return;
       try {
         const fresh = await api.get("/admin/bookings");
@@ -203,7 +312,7 @@ function AdminApp({ slug }) {
       }
     }, 30000);
     return () => clearInterval(id);
-  }, [token, loaded, api]);
+  }, [token, loaded, api, loadWaitlist]);
 
   // Runs a save; if it fails, shows the error and reloads bookings from the server.
   const run = useCallback(
@@ -244,6 +353,8 @@ function AdminApp({ slug }) {
     },
     [api, run]
   );
+  const removeBookingRef = useRef(removeBooking);
+  removeBookingRef.current = removeBooking;
 
   const updateBooking = useCallback(
     (id, patch) => {
@@ -275,6 +386,42 @@ function AdminApp({ slug }) {
     [saveArrived]
   );
   const setArrivalAll = useCallback((id, value) => saveArrived(id, (b) => Array(b.partySize).fill(value)), [saveArrived]);
+
+  // Waitlist actions throw on failure so the panel can show the message.
+  const waitlistActions = {
+    add: async (entry) => {
+      await api.post("/admin/waitlist", entry);
+      await loadWaitlist();
+    },
+    offer: async (id) => {
+      await api.post(`/admin/waitlist/${id}/offer`);
+      await loadWaitlist();
+    },
+    notify: async (id) => {
+      try {
+        await api.post(`/admin/waitlist/${id}/notify`);
+      } finally {
+        await loadWaitlist();
+      }
+    },
+    setStatus: async (id, status) => {
+      await api.patch(`/admin/waitlist/${id}`, { status });
+      await loadWaitlist();
+    },
+    saveSettings: async (settings) => {
+      await api.put("/admin/waitlist/settings", settings);
+      await loadWaitlist();
+    },
+  };
+
+  // A cancellation may free a table for someone on the waitlist (automatic mode texts them).
+  const removeAndRefresh = useCallback(
+    async (id) => {
+      await removeBookingRef.current(id);
+      setTimeout(loadWaitlist, 1500);
+    },
+    [loadWaitlist]
+  );
 
   const refundDeposit = useCallback(
     (id) => run(async () => replaceBooking(await api.post(`/admin/bookings/${id}/refund`))),
@@ -355,7 +502,7 @@ function AdminApp({ slug }) {
   if (!loaded) return <Centered dark>Loading...</Centered>;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#000" }}>
+    <div style={{ minHeight: "100vh" }}>
       {notice && (
         <div
           style={{
@@ -395,7 +542,7 @@ function AdminApp({ slug }) {
         sections={sections}
         setSections={setSections}
         addBooking={addBooking}
-        removeBooking={removeBooking}
+        removeBooking={removeAndRefresh}
         updateBooking={updateBooking}
         toggleArrival={toggleArrival}
         setArrivalAll={setArrivalAll}
@@ -409,6 +556,8 @@ function AdminApp({ slug }) {
         onChangePassword={user?.master ? null : () => setPasswordOpen(true)}
         allRestaurantsUrl={user?.master ? "/admin" : null}
         bookingPageUrl={`/${slug}`}
+        waitlist={waitlist}
+        waitlistActions={waitlistActions}
         onLogout={logOut}
       />
       {teamOpen && <TeamModal api={api} currentEmail={user?.email} onClose={() => setTeamOpen(false)} />}
@@ -426,6 +575,7 @@ function Root() {
   else if (parts.length === 1 && parts[0] === "admin") page = <PlatformApp />;
   else if (parts.length === 1) page = <CustomerApp slug={parts[0]} />;
   else if (parts.length === 2 && parts[1] === "admin") page = <AdminApp slug={parts[0]} />;
+  else if (parts.length === 3 && parts[1] === "offer") page = <OfferPage slug={parts[0]} token={parts[2]} />;
   else page = <Centered>Page not found.</Centered>;
   return (
     <>

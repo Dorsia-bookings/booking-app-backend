@@ -46,6 +46,42 @@ const STATEMENTS = [
      password_hash TEXT NOT NULL,
      created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
    )`,
+
+  // Waiting list: guests waiting for a full booking time, and walk-ins waiting for a table
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS waitlist_mode TEXT NOT NULL DEFAULT 'manual'`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS waitlist_offer_minutes INTEGER NOT NULL DEFAULT 15`,
+  `CREATE TABLE IF NOT EXISTS waitlist_entries (
+     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     tenant_id        UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+     kind             TEXT NOT NULL DEFAULT 'waitlist',
+     name             TEXT NOT NULL,
+     phone            TEXT NOT NULL DEFAULT '',
+     email            TEXT,
+     party_size       INTEGER NOT NULL,
+     booking_date     DATE NOT NULL,
+     sitting_id       UUID REFERENCES sittings(id) ON DELETE SET NULL,
+     notes            TEXT NOT NULL DEFAULT '',
+     status           TEXT NOT NULL DEFAULT 'waiting',
+     offer_token      TEXT UNIQUE,
+     offer_expires_at TIMESTAMPTZ,
+     offered_at       TIMESTAMPTZ,
+     notified_at      TIMESTAMPTZ,
+     booking_id       UUID REFERENCES bookings(id) ON DELETE SET NULL,
+     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_waitlist_tenant_date ON waitlist_entries(tenant_id, booking_date)`,
+  `CREATE TABLE IF NOT EXISTS sms_messages (
+     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     tenant_id  UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+     entry_id   UUID REFERENCES waitlist_entries(id) ON DELETE SET NULL,
+     to_phone   TEXT NOT NULL,
+     body       TEXT NOT NULL,
+     status     TEXT NOT NULL,
+     error      TEXT,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_sms_tenant ON sms_messages(tenant_id, created_at)`,
 ];
 
 async function runMigrations() {
