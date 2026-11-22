@@ -974,7 +974,7 @@ export function OwnerDashboard({ bookings, floorElements, setFloorElements, room
   }
 
   return (
-    <div className="lib-scope" data-theme={theme} style={{ minHeight: "100%", background: "var(--bg)", color: "var(--text)" }}>
+    <div className="lib-scope" data-theme={theme} style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)" }}>
       <style>{LIB_TOKENS}</style>
       <div style={{ padding: "28px 28px 0" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14 }}>
@@ -1830,7 +1830,7 @@ function TimeSlotsEditor({ initialSittings, onSave, onBack, onClose }) {
           left: "50%",
           transform: "translate(-50%, -50%)",
           zIndex: 56,
-          width: 460,
+          width: 560,
           maxWidth: "calc(100vw - 40px)",
           maxHeight: "calc(100vh - 60px)",
           overflowY: "auto",
@@ -1906,13 +1906,13 @@ function TimeSlotsEditor({ initialSittings, onSave, onBack, onClose }) {
                     type="time"
                     value={s.time24}
                     onChange={(e) => updateSlot(s.id, { time24: e.target.value })}
-                    style={{ ...editorInputStyle, width: 110 }}
+                    style={{ ...editorInputStyle, width: 132, flexShrink: 0 }}
                   />
                   <input
                     value={s.label}
                     onChange={(e) => updateSlot(s.id, { label: e.target.value })}
                     placeholder="Optional label, e.g. Lunch"
-                    style={{ ...editorInputStyle, flex: 1 }}
+                    style={{ ...editorInputStyle, flex: 1, minWidth: 0 }}
                   />
                   <input
                     type="number"
@@ -1921,7 +1921,7 @@ function TimeSlotsEditor({ initialSittings, onSave, onBack, onClose }) {
                     onChange={(e) => updateSlot(s.id, { maxCovers: e.target.value === "" ? null : Math.max(0, parseInt(e.target.value) || 0) })}
                     placeholder="Max"
                     title="Max covers for this time — blank means no limit"
-                    style={{ ...editorInputStyle, width: 64 }}
+                    style={{ ...editorInputStyle, width: 76, flexShrink: 0 }}
                   />
                   <button
                     onClick={() => removeSlot(s.id)}
