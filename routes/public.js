@@ -3,7 +3,7 @@ const express = require("express");
 const router = express.Router({ mergeParams: true });
 const pool = require("../db");
 const { sittingOut, slotOut } = require("../lib/shapes");
-const { todayIn, newReference, DEFAULT_DURATION } = require("../lib/availability");
+const { todayIn, newReference, DEFAULT_DURATION, tooLateToBook, BOOKING_CUTOFF_MINUTES } = require("../lib/availability");
 const { publicSquareConfig, squareConfig, chargeDeposit, refundPayment } = require("../lib/square");
 const { BookingError, resolveCustomer, lockAndLoad, placeBooking, isValidDate } = require("../lib/bookingCore");
 const { tooManyAttempts, recordFailure } = require("../lib/rateLimit");
@@ -29,6 +29,7 @@ router.get("/config", async (req, res) => {
       today: todayIn(t.timezone),
       depositThreshold: t.deposit_threshold,
       depositPerHead: Number(t.deposit_per_head),
+      cutoffMinutes: BOOKING_CUTOFF_MINUTES,
       sittings: sittings.rows.map(sittingOut),
       tables: tables.rows.map((r) => ({
         id: r.id,
@@ -90,6 +91,10 @@ router.post("/bookings", async (req, res) => {
   try {
     await client.query("BEGIN");
     const ctx = await lockAndLoad(client, t.id, date);
+    const chosen = ctx.sittingsById[sittingId];
+    if (chosen && tooLateToBook(t.timezone, date, chosen.time_of_day)) {
+      throw new BookingError("That time has passed or is too soon to book online. Please pick a later time or call us.");
+    }
     const draft = {
       booking_date: date,
       sitting_id: sittingId,
@@ -174,8 +179,11 @@ router.post("/waitlist", async (req, res) => {
   }
   if (date < todayIn(t.timezone)) return res.status(400).json({ error: "That date has already passed." });
   try {
-    const sitting = await pool.query("SELECT id FROM sittings WHERE tenant_id = $1 AND id = $2", [t.id, sittingId]);
+    const sitting = await pool.query("SELECT id, time_of_day FROM sittings WHERE tenant_id = $1 AND id = $2", [t.id, sittingId]);
     if (!sitting.rows.length) return res.status(400).json({ error: "That booking time no longer exists." });
+    if (tooLateToBook(t.timezone, date, sitting.rows[0].time_of_day)) {
+      return res.status(400).json({ error: "That time has passed or is too soon. Please pick a later time." });
+    }
     recordFailure(limitKey); // counts joins, not failures: at most 10 per 15 minutes from one connection
     const cleanPhone = String(phone).trim().slice(0, 40);
     const existing = await pool.query(

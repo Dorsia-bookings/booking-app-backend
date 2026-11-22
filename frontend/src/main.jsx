@@ -91,6 +91,7 @@ function CustomerApp({ slug }) {
     <div style={{ minHeight: "100vh", background: "#F3ECDD" }}>
       <CustomerBooking
         onJoinWaitlist={joinWaitlist}
+        cutoffMinutes={config.cutoffMinutes}
         bookings={slots}
         tables={config.tables}
         sittings={config.sittings}

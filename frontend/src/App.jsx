@@ -283,7 +283,20 @@ function Badge({ tone, children }) {
 
 /* ============ CUSTOMER BOOKING FLOW ============ */
 
-export function CustomerBooking({ bookings, tables, sittings, terms, square, onSubmit, onJoinWaitlist }) {
+export function CustomerBooking({ bookings, tables, sittings, terms, square, onSubmit, onJoinWaitlist, cutoffMinutes = 30 }) {
+  // Today, hide times that have passed or start too soon to book online.
+  const [, setNowTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setNowTick((n) => n + 1), 60000);
+    return () => clearInterval(id);
+  }, []);
+  function openSittingsFor(dateIso) {
+    const list = sittingsForDate(sittings, dateIso);
+    if (dateIso !== todayISO()) return list;
+    const now = new Date();
+    const earliest = now.getHours() * 60 + now.getMinutes() + cutoffMinutes;
+    return list.filter((s) => timeToMinutes(s.time24) >= earliest);
+  }
   const [step, setStep] = useState(1);
   // Set when the chosen time is full, so the guest can join the waitlist instead.
   const [full, setFull] = useState(false);
@@ -291,7 +304,7 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
     const date = todayISO();
     return {
       date,
-      sitting: sittingsForDate(sittings, date)[0]?.id || "",
+      sitting: openSittingsFor(date)[0]?.id || "",
       partySize: 2,
       name: "",
       email: "",
@@ -305,7 +318,7 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
 
   // When the date changes, make sure the chosen time is one that's offered that day.
   useEffect(() => {
-    const todays = sittingsForDate(sittings, form.date);
+    const todays = openSittingsFor(form.date);
     if (!todays.some((s) => s.id === form.sitting)) {
       setForm((f) => ({ ...f, sitting: todays[0]?.id || "" }));
     }
@@ -473,12 +486,20 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
                 min={todayISO()}
                 value={form.date}
                 onChange={(e) => set("date", e.target.value)}
+                onClick={(e) => {
+                  // Clicking anywhere in the box opens the calendar, not just the icon.
+                  try {
+                    e.currentTarget.showPicker?.();
+                  } catch {
+                    /* older browsers: the icon still works */
+                  }
+                }}
                 style={inputStyle}
               />
             </Field>
             <Field label="Time">
               {(() => {
-                const todaysSittings = sittingsForDate(sittings, form.date);
+                const todaysSittings = openSittingsFor(form.date);
                 return todaysSittings.length === 0 ? (
                   <div style={{ fontSize: 13, color: "#963B3B" }}>No booking times available on this day.</div>
                 ) : (
@@ -523,7 +544,7 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
             </Field>
             {error && (
               <ErrorText>
-                {full && onJoinWaitlist && form.sitting ? "That time is fully booked. Try another time or join the waitlist below." : error}
+                {full && onJoinWaitlist && form.sitting ? "That time is fully booked for the number of guests we can seat. Try another time or join the waitlist below." : error}
               </ErrorText>
             )}
             <SubmitButton onClick={handleStep1Continue}>Next</SubmitButton>
