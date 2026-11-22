@@ -1,6 +1,7 @@
 // Login, team management, change password and the Dorsia master page.
 import React, { useState, useEffect } from "react";
 import { makeApiAt, loadToken, saveToken, PLATFORM } from "./api.js";
+import { useEscapeToClose } from "./App.jsx";
 
 const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 
@@ -114,6 +115,7 @@ export function Login({ api, label, paths, onLoggedIn, setupHint }) {
 /* ---------- Pop-up panel shell ---------- */
 
 function Panel({ title, onClose, width = 460, children }) {
+  useEscapeToClose(() => onClose());
   return (
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 80 }} />

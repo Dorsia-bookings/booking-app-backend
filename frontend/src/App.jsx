@@ -219,6 +219,27 @@ export function fontStyles() {
   `;
 }
 
+// Esc closes the top-most pop-up window only (pop-ups register in the order they open).
+const escapeStack = [];
+function handleEscapeKey(e) {
+  if (e.key !== "Escape" || e.defaultPrevented || escapeStack.length === 0) return;
+  e.preventDefault();
+  escapeStack[escapeStack.length - 1].current();
+}
+export function useEscapeToClose(onEscape) {
+  const ref = useRef(onEscape);
+  ref.current = onEscape;
+  useEffect(() => {
+    if (escapeStack.length === 0) window.addEventListener("keydown", handleEscapeKey);
+    escapeStack.push(ref);
+    return () => {
+      const i = escapeStack.lastIndexOf(ref);
+      if (i !== -1) escapeStack.splice(i, 1);
+      if (escapeStack.length === 0) window.removeEventListener("keydown", handleEscapeKey);
+    };
+  }, []);
+}
+
 function Badge({ tone, children }) {
   const tones = {
     sage: { bg: "#E7EEE6", fg: "#3F5A3D", dot: "#5F7A5C" },
@@ -1509,6 +1530,7 @@ export function OwnerDashboard({ bookings, floorElements, setFloorElements, room
 }
 
 function SettingsModal({ terms, onSaveTerms, onOpenTimeSlots, tables, onUpdateTable, onClose }) {
+  useEscapeToClose(() => onClose());
   const [draftTerms, setDraftTerms] = useState(terms);
   const [justSaved, setJustSaved] = useState(false);
   const [dragId, setDragId] = useState(null);
@@ -1748,6 +1770,7 @@ function SettingsModal({ terms, onSaveTerms, onOpenTimeSlots, tables, onUpdateTa
 }
 
 function TimeSlotsEditor({ initialSittings, onSave, onBack, onClose }) {
+  useEscapeToClose(() => onClose());
   const [slots, setSlots] = useState(() => [...initialSittings].sort((a, b) => a.time24.localeCompare(b.time24)));
   const [bulkStart, setBulkStart] = useState("17:30");
   const [bulkEnd, setBulkEnd] = useState("21:00");
@@ -1968,6 +1991,7 @@ const editorInputStyle = {
 };
 
 function WalkInModal({ bookings, tables, onCreate, onClose }) {
+  useEscapeToClose(() => onClose());
   const [partySize, setPartySize] = useState(2);
   const [name, setName] = useState("");
   const [tableId, setTableId] = useState("");
@@ -2079,6 +2103,7 @@ function WalkInModal({ bookings, tables, onCreate, onClose }) {
 }
 
 function NewBookingModal({ bookings, tables, sittings, defaultDate, defaultSitting, editingBooking, onCreate, onUpdate, onDelete, onRefund, onClose }) {
+  useEscapeToClose(() => onClose());
   const isEditing = !!editingBooking;
   const [form, setForm] = useState(() =>
     editingBooking
@@ -2426,11 +2451,21 @@ function FloorPlanBuilder({ initialElements, initialRoomSize, initialSections, o
   const [addingSection, setAddingSection] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
+  const startingLayout = useRef(JSON.stringify({ initialElements, initialRoomSize, initialSections }));
   const canvasRef = useRef(null);
   const importInputRef = useRef(null);
   const dragRef = useRef(null);
   const rotateRef = useRef(null);
   const resizeRef = useRef(null);
+
+  // Esc: first deselects, then cancels a pending reset, then closes (asking first if there are unsaved changes).
+  useEscapeToClose(() => {
+    if (selectedId) return setSelectedId(null);
+    if (confirmingReset) return setConfirmingReset(false);
+    const unchanged =
+      JSON.stringify({ initialElements: elements, initialRoomSize: roomSize, initialSections: sections }) === startingLayout.current;
+    if (unchanged || window.confirm("Close the floor plan builder without saving your changes?")) onClose();
+  });
 
   // Download the layout as a .json file (backup, or to copy to another restaurant).
   function exportLayout() {
@@ -2761,7 +2796,7 @@ function FloorPlanBuilder({ initialElements, initialRoomSize, initialSections, o
                 autoFocus
                 value={newSectionName}
                 onChange={(e) => setNewSectionName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") addSection(); if (e.key === "Escape") { setAddingSection(false); setNewSectionName(""); } }}
+                onKeyDown={(e) => { if (e.key === "Enter") addSection(); if (e.key === "Escape") { e.preventDefault(); setAddingSection(false); setNewSectionName(""); } }}
                 placeholder="e.g. Upstairs"
                 style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--panel-raised)", color: "var(--text)", fontFamily: "inherit", fontSize: 13, width: 130 }}
               />
@@ -3477,6 +3512,7 @@ function TimelineDay({ bookings, tables, sittings, date, onEditBooking }) {
 }
 
 function CustomerPortal({ bookings, tables, sittings, customerNotes, onSaveNote, initialEmail, onClose }) {
+  useEscapeToClose(() => onClose());
   const [search, setSearch] = useState("");
   const [onlyUpcoming, setOnlyUpcoming] = useState(false);
   const [selectedEmail, setSelectedEmail] = useState(initialEmail || null);
