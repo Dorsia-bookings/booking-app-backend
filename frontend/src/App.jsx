@@ -2430,9 +2430,96 @@ function FloorPlanBuilder({ initialElements, initialRoomSize, initialSections, o
   const [selectedId, setSelectedId] = useState(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const canvasRef = useRef(null);
+  const importInputRef = useRef(null);
   const dragRef = useRef(null);
   const rotateRef = useRef(null);
   const resizeRef = useRef(null);
+
+  // Download the layout as a .json file (backup, or to copy to another restaurant).
+  function exportLayout() {
+    const data = { version: 1, elements, roomSize, sections };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `floorplan-${(RESTAURANT_NAME || "restaurant").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${todayISO()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // Load a layout from a .json file into the builder. Nothing is saved until "Save layout".
+  function importLayoutFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(String(reader.result));
+        const rawElements = Array.isArray(data) ? data : data.elements;
+        if (!Array.isArray(rawElements) || rawElements.length === 0) throw new Error("no elements");
+        const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+
+        const importedSections =
+          Array.isArray(data.sections) && data.sections.length
+            ? data.sections.filter((x) => x && x.id).map((x) => ({ id: String(x.id), name: String(x.name || "Section") }))
+            : DEFAULT_SECTIONS.map((x) => ({ ...x }));
+        const sectionIds = new Set(importedSections.map((x) => x.id));
+        const usedIds = new Set();
+
+        const next = rawElements
+          .filter((el) => el && (el.kind === "table" || el.kind === "wall"))
+          .map((el) => {
+            // Keep IDs from this app (so existing bookings stay on their tables); replace old-style IDs.
+            let id = uuidRe.test(String(el.id)) && !usedIds.has(el.id) ? el.id : newElementId();
+            usedIds.add(id);
+            const isTable = el.kind === "table";
+            const seats = isTable ? Math.max(1, Math.round(num(el.seats, 2))) : undefined;
+            const out = {
+              id,
+              kind: el.kind,
+              x: Math.min(100, Math.max(0, num(el.x, 50))),
+              y: Math.min(100, Math.max(0, num(el.y, 50))),
+              w: Math.max(4, num(el.w, 60)),
+              h: Math.max(4, num(el.h, 60)),
+              rotation: num(el.rotation, 0),
+              label: String(el.label || ""),
+              section: sectionIds.has(el.section) ? el.section : importedSections[0].id,
+            };
+            if (isTable) {
+              out.shape = ["round", "square", "rect"].includes(el.shape) ? el.shape : "square";
+              out.seats = seats;
+              if (el.priority != null) out.priority = num(el.priority, undefined);
+              if (el.minParty != null) out.minParty = Math.max(1, num(el.minParty, 1));
+              if (el.maxParty != null) out.maxParty = Math.max(1, num(el.maxParty, seats));
+            }
+            return out;
+          });
+        if (next.length === 0) throw new Error("no tables or walls");
+
+        const tableCount = next.filter((e) => e.kind === "table").length;
+        const wallCount = next.length - tableCount;
+        const ok = window.confirm(
+          `Load ${tableCount} table${tableCount === 1 ? "" : "s"} and ${wallCount} wall${wallCount === 1 ? "" : "s"} from "${file.name}"?\n\n` +
+            `This replaces the layout in the builder. Nothing is saved until you click "Save layout". ` +
+            `Bookings on tables that aren't in the new layout will need a table re-assigned.`
+        );
+        if (!ok) return;
+
+        setElements(next);
+        if (data.roomSize && data.roomSize.w && data.roomSize.h) {
+          setRoomSize({ w: Math.round(num(data.roomSize.w, 880)), h: Math.round(num(data.roomSize.h, 380)) });
+        }
+        setSections(importedSections);
+        setActiveSection(importedSections[0].id);
+        setSelectedId(null);
+      } catch (e) {
+        window.alert("That file isn't a floor plan this app can read. Use a .json file exported from the floor plan builder.");
+      }
+    };
+    reader.readAsText(file);
+  }
 
   function resetToDefaultLayout() {
     setElements(DEFAULT_FLOOR_ELEMENTS.map((e) => ({ ...e, id: newElementId() })));
@@ -2627,7 +2714,21 @@ function FloorPlanBuilder({ initialElements, initialRoomSize, initialSections, o
                 <button onClick={() => setConfirmingReset(false)} className="lib-pill">Cancel</button>
               </>
             ) : (
-              <button onClick={() => setConfirmingReset(true)} className="lib-pill" style={{ color: "var(--danger)" }}>Reset layout</button>
+              <>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".json,application/json"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    importLayoutFile(e.target.files && e.target.files[0]);
+                    e.target.value = "";
+                  }}
+                />
+                <button onClick={() => importInputRef.current && importInputRef.current.click()} className="lib-pill">Import</button>
+                <button onClick={exportLayout} className="lib-pill">Export</button>
+                <button onClick={() => setConfirmingReset(true)} className="lib-pill" style={{ color: "var(--danger)" }}>Reset layout</button>
+              </>
             )}
             <button onClick={onClose} className="lib-pill">Cancel</button>
             <button onClick={() => onSave(elements, roomSize, sections, activeSection)} className="lib-pill is-active">Save layout</button>
