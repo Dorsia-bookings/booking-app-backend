@@ -521,7 +521,11 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
                 </div>
               )}
             </Field>
-            {error && <ErrorText>{error}</ErrorText>}
+            {error && (
+              <ErrorText>
+                {full && onJoinWaitlist && form.sitting ? "That time is fully booked. Try another time or join the waitlist below." : error}
+              </ErrorText>
+            )}
             <SubmitButton onClick={handleStep1Continue}>Next</SubmitButton>
             {full && onJoinWaitlist && form.sitting && (
               <div style={{ marginTop: 16, textAlign: "center" }}>
