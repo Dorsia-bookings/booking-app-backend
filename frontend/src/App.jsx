@@ -1181,9 +1181,6 @@ export function OwnerDashboard({ bookings, floorElements, setFloorElements, room
                 border: "1px solid var(--border)",
               }}
             >
-            <div className="wv-mono" style={{ position: "absolute", top: 10, left: 16, fontSize: 10, color: "var(--text-faint)", letterSpacing: "0.15em" }}>
-              WINDOW SIDE
-            </div>
             {sectionWalls.map((w) => (
               <div
                 key={w.id}
