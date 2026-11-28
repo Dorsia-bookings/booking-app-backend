@@ -77,7 +77,8 @@ const SITE_CSS = `
 .dsite .s-wrap { padding-left: clamp(20px, 4cqw, 64px); padding-right: clamp(20px, 4cqw, 64px); }
 
 /* header */
-.dsite .s-header { position: absolute; top: 0; left: 0; right: 0; z-index: 5; display: flex; gap: 16px; padding-top: clamp(20px, 2.4cqw, 36px); }
+.dsite .s-header { position: absolute; top: 0; left: 0; right: 0; z-index: 5; display: flex; gap: 16px; padding-top: clamp(20px, 2.4cqw, 36px);
+  color: var(--hdr-d); --s-text: var(--hdr-d); --s-hover: var(--hdr-d); }
 .dsite .s-slot { flex: 1 1 0; display: flex; align-items: center; gap: clamp(14px, 2cqw, 32px); }
 .dsite .s-slot.right { justify-content: flex-end; }
 .dsite .s-logo { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; }
@@ -89,12 +90,12 @@ const SITE_CSS = `
 .dsite .only-phone { display: none !important; }
 
 /* hero */
-.dsite .s-hero { position: relative; overflow: hidden; background: #000; }
+.dsite .s-hero { position: relative; overflow: hidden; background: var(--s-bg); padding-top: var(--hg-d); }
 .dsite .s-hero-img { display: block; width: 100%; }
 .dsite .s-hero.fd-whole .s-hero-img { height: auto; }
 .dsite .s-hero.fd-tall { height: min(92vh, 62cqw); min-height: 520px; }
-.dsite .s-hero.fd-tall .s-hero-img { position: absolute; inset: 0; height: 100%; object-fit: cover; }
-.dsite .s-hero-shade { position: absolute; inset: 0; pointer-events: none;
+.dsite .s-hero.fd-tall .s-hero-img { position: absolute; left: 0; right: 0; bottom: 0; top: var(--hg-d); height: auto; object-fit: cover; }
+.dsite .s-hero-shade { position: absolute; left: 0; right: 0; bottom: 0; top: var(--hg-d); pointer-events: none;
   background: linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 24%, rgba(0,0,0,0) 62%, rgba(0,0,0,0.8) 100%); }
 .dsite .s-hero-title { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; color: #fff; font-size: clamp(44px, 8cqw, 120px); }
 .dsite .s-hero-foot { position: absolute; left: 0; right: 0; bottom: var(--hb-d); display: flex; gap: 24px; color: #fff; }
@@ -135,13 +136,17 @@ const SITE_CSS = `
 @container dsite (max-width: 760px) {
   .dsite .only-desk { display: none !important; }
   .dsite .only-phone { display: flex !important; }
+  .dsite .s-hero { padding-top: var(--hg-p); }
+  .dsite .s-hero-shade { top: var(--hg-p); }
+  .dsite .s-header { color: var(--hdr-p); --s-text: var(--hdr-p); --s-hover: var(--hdr-p); }
   .dsite .s-hero.fp-whole { height: auto; min-height: 0; }
   .dsite .s-hero.fp-whole .s-hero-img { position: static; height: auto; }
   .dsite .s-hero.fp-whole .s-hero-foot { position: relative; bottom: auto; z-index: 2; background: var(--s-bg); color: var(--s-text); padding-top: 36px; padding-bottom: 8px; }
   .dsite .s-hero.fp-whole .s-hero-foot .s-btn { color: var(--s-text); border-color: var(--s-text); }
   .dsite .s-hero.fp-whole .s-hero-foot .s-btn.fill { color: var(--s-on-accent); border-color: var(--s-accent); }
   .dsite .s-hero.fp-tall { height: auto; aspect-ratio: 9 / 16; max-height: 100vh; min-height: 0; }
-  .dsite .s-hero.fp-tall .s-hero-img { position: absolute; inset: 0; height: 100%; object-fit: cover; }
+  .dsite .s-hero.fp-tall .s-hero-img { position: absolute; left: 0; right: 0; bottom: 0; top: var(--hg-p); height: auto; object-fit: cover; }
+  .dsite .s-hero.fp-whole .s-hero-img { top: auto; }
   .dsite .s-hero-foot { bottom: var(--hb-p); flex-direction: column !important; align-items: stretch !important; text-align: center; gap: 22px; }
   .dsite .s-hero-foot .s-btn { min-width: 0; width: 100%; }
   .dsite .s-photo { aspect-ratio: 4 / 3; }
@@ -234,6 +239,8 @@ export function SitePage({ name, site, booking, preview = false }) {
     "--s-btn-track": classic ? "0.22em" : "0.02em", "--s-btn-size": classic ? "13px" : "16px", "--s-nav-size": classic ? "13px" : "15px",
     "--s-label-case": "uppercase", "--s-label-track": classic ? "0.3em" : "0.18em",
     "--hb-d": `${hero.buttonsBottomDesktop}px`, "--hb-p": `${hero.buttonsBottomPhone}px`,
+    "--hg-d": `${header.gapDesktop || 0}px`, "--hg-p": `${header.gapPhone || 0}px`,
+    "--hdr-d": header.gapDesktop ? colors.text : "#fff", "--hdr-p": header.gapPhone ? colors.text : "#fff",
     // booking form colours
     "--bk-page": "transparent", "--bk-text": colors.text, "--bk-text2": colors.muted, "--bk-muted": colors.muted,
     "--bk-heading": colors.text, "--bk-accent": colors.accent, "--bk-on-accent": colors.onAccent,
@@ -275,7 +282,7 @@ export function SitePage({ name, site, booking, preview = false }) {
     <a href="#top" className="s-logo" aria-label={`${name}, home`}>
       {header.logo && <img src={header.logo} alt="" style={{ height: header.logoHeight, width: "auto", display: "block", maxWidth: "60cqw" }} />}
       {header.showName && (
-        <span className="s-head" style={{ fontSize: header.logo ? 18 : 28, marginTop: header.logo ? 8 : 0, color: "#fff" }}>
+        <span className="s-head" style={{ fontSize: header.logo ? 18 : 28, marginTop: header.logo ? 8 : 0, color: "currentColor" }}>
           {name}
         </span>
       )}
@@ -323,7 +330,7 @@ export function SitePage({ name, site, booking, preview = false }) {
           <div className="s-hero-img" style={{ aspectRatio: "16 / 9", background: colors.panel }} />
         )}
         <div className="s-hero-shade" />
-        <div className="s-header s-wrap" style={{ alignItems: header.logoHeight > 80 ? "flex-start" : "center", color: "#fff", "--s-text": "#fff", "--s-hover": "#fff" }}>
+        <div className="s-header s-wrap" style={{ alignItems: header.logoHeight > 80 ? "flex-start" : "center" }}>
           {pos !== "left" && (
             <div className="s-slot">
               {pos === "right" ? (

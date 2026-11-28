@@ -582,6 +582,12 @@ export function SiteEditor({ api, slug, name, previewBooking, onClose }) {
                 <Field label="Menu on phones">
                   <Seg value={header.menuPhone} onChange={(v) => setPart("header")({ menuPhone: v })} options={[["links", "Links"], ["menu", "☰ Menu"]]} />
                 </Field>
+                <Field label="Band between header and photo, computers" hint="Gives the logo and menu their own strip, so the photo starts below them.">
+                  <Slider value={header.gapDesktop || 0} min={0} max={300} step={2} onChange={(v) => setPart("header")({ gapDesktop: v })} />
+                </Field>
+                <Field label="Band between header and photo, phones">
+                  <Slider value={header.gapPhone || 0} min={0} max={300} step={2} onChange={(v) => setPart("header")({ gapPhone: v })} />
+                </Field>
                 <Field label="Instagram"><Text value={site.links.instagram} onChange={(v) => setPart("links")({ instagram: v })} placeholder="https://www.instagram.com/..." /></Field>
                 <Field label="Facebook"><Text value={site.links.facebook} onChange={(v) => setPart("links")({ facebook: v })} placeholder="https://www.facebook.com/..." /></Field>
                 <Field label="TikTok"><Text value={site.links.tiktok} onChange={(v) => setPart("links")({ tiktok: v })} placeholder="https://www.tiktok.com/@..." /></Field>
