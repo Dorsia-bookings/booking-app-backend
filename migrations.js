@@ -82,6 +82,24 @@ const STATEMENTS = [
      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
    )`,
   `CREATE INDEX IF NOT EXISTS idx_sms_tenant ON sms_messages(tenant_id, created_at)`,
+
+  // Restaurant website: settings and words live here; photos, PDFs and fonts live in file storage (S3)
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS site JSONB`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS site_enabled BOOLEAN NOT NULL DEFAULT false`,
+  `CREATE TABLE IF NOT EXISTS site_files (
+     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     tenant_id    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+     kind         TEXT NOT NULL,
+     name         TEXT NOT NULL DEFAULT '',
+     content_type TEXT NOT NULL,
+     size_bytes   INTEGER NOT NULL,
+     width        INTEGER,
+     height       INTEGER,
+     storage      TEXT NOT NULL,
+     storage_key  TEXT NOT NULL,
+     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_site_files_tenant ON site_files(tenant_id, created_at)`,
 ];
 
 async function runMigrations() {

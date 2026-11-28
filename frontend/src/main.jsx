@@ -3,10 +3,13 @@ import { createRoot } from "react-dom/client";
 import { CustomerBooking, OwnerDashboard, fontStyles, setRestaurantInfo, LIB_TOKENS } from "./App.jsx";
 import { makeApi, loadToken, saveToken, PLATFORM } from "./api.js";
 import { Login, TeamModal, PasswordModal, PlatformApp, darkButton } from "./accounts.jsx";
+import { SitePage } from "./site.jsx";
+import { SiteEditor } from "./siteEditor.jsx";
 
 /* Addresses:
    /                      → Dorsia holding page
-   /<restaurant>          → public booking page, e.g. /don-camillo
+   /<restaurant>          → the restaurant's website (if switched on), otherwise its booking page
+   /<restaurant>/book     → the plain booking page
    /<restaurant>/admin    → restaurant dashboard (owner or staff login)
    /<restaurant>/offer/x  → waitlist offer link sent by text
    /admin                 → Dorsia master page (all restaurants)       */
@@ -44,7 +47,7 @@ function Landing() {
 
 /* ---------- Public booking page ---------- */
 
-function CustomerApp({ slug }) {
+function CustomerApp({ slug, bookingOnly = false }) {
   const api = useRef(makeApi(slug)).current;
   const [config, setConfig] = useState(null);
   const [slots, setSlots] = useState([]);
@@ -63,7 +66,7 @@ function CustomerApp({ slug }) {
       try {
         const cfg = await api.get("/public/config");
         setRestaurantInfo(cfg);
-        document.title = `${cfg.name} · Book a table`;
+        document.title = cfg.siteEnabled && !bookingOnly ? cfg.name : `${cfg.name} · Book a table`;
         await refreshSlots();
         setConfig(cfg);
       } catch (e) {
@@ -87,6 +90,19 @@ function CustomerApp({ slug }) {
 
   if (error) return <Centered>{error}</Centered>;
   if (!config) return <Centered>Loading...</Centered>;
+  const bookingProps = {
+    onJoinWaitlist: joinWaitlist,
+    cutoffMinutes: config.cutoffMinutes,
+    bookings: slots,
+    tables: config.tables,
+    sittings: config.sittings,
+    terms: config.terms,
+    square: config.square,
+    onSubmit: submit,
+  };
+  if (config.siteEnabled && config.site && !bookingOnly) {
+    return <SitePage name={config.name} site={config.site} booking={bookingProps} />;
+  }
   return (
     <div style={{ minHeight: "100vh", background: "#F3ECDD" }}>
       <CustomerBooking
@@ -239,6 +255,8 @@ function AdminApp({ slug }) {
   logOutRef.current = logOut;
   const api = useRef(makeApi(slug, () => tokenRef.current, () => logOutRef.current())).current;
   const [teamOpen, setTeamOpen] = useState(false);
+  const [websiteOpen, setWebsiteOpen] = useState(false);
+  const [restaurantName, setRestaurantName] = useState("");
   const [passwordOpen, setPasswordOpen] = useState(false);
 
   const [loaded, setLoaded] = useState(false);
@@ -267,6 +285,7 @@ function AdminApp({ slug }) {
   const loadState = useCallback(async () => {
     const s = await api.get("/admin/state");
     setRestaurantInfo(s.restaurant);
+    setRestaurantName(s.restaurant.name);
     document.title = `${s.restaurant.name} · Dashboard`;
     setUser(s.user);
     setBookings(s.bookings);
@@ -559,8 +578,31 @@ function AdminApp({ slug }) {
         bookingPageUrl={`/${slug}`}
         waitlist={waitlist}
         waitlistActions={waitlistActions}
+        onOpenWebsite={isOwner ? () => setWebsiteOpen(true) : null}
         onLogout={logOut}
       />
+      {websiteOpen && (
+        <SiteEditor
+          api={api}
+          slug={slug}
+          name={restaurantName}
+          previewBooking={{
+            bookings,
+            tables: floorElements.filter((e) => e.kind === "table"),
+            sittings,
+            terms,
+            square: null,
+            cutoffMinutes: 30,
+            onSubmit: async () => {
+              throw new Error("This is a preview, so bookings aren't saved here.");
+            },
+            onJoinWaitlist: async () => {
+              throw new Error("This is a preview, so nothing is saved here.");
+            },
+          }}
+          onClose={() => setWebsiteOpen(false)}
+        />
+      )}
       {teamOpen && <TeamModal api={api} currentEmail={user?.email} onClose={() => setTeamOpen(false)} />}
       {passwordOpen && <PasswordModal api={api} path="/auth/password" onClose={() => setPasswordOpen(false)} />}
     </div>
@@ -576,6 +618,7 @@ function Root() {
   else if (parts.length === 1 && parts[0] === "admin") page = <PlatformApp />;
   else if (parts.length === 1) page = <CustomerApp slug={parts[0]} />;
   else if (parts.length === 2 && parts[1] === "admin") page = <AdminApp slug={parts[0]} />;
+  else if (parts.length === 2 && parts[1] === "book") page = <CustomerApp slug={parts[0]} bookingOnly />;
   else if (parts.length === 3 && parts[1] === "offer") page = <OfferPage slug={parts[0]} token={parts[2]} />;
   else page = <Centered>Page not found.</Centered>;
   return (

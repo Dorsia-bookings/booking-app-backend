@@ -15,6 +15,9 @@ const customersRouter = require("./routes/customers");
 const teamRouter = require("./routes/team");
 const platformRouter = require("./routes/platform");
 const waitlistRouter = require("./routes/waitlist");
+const siteRouter = require("./routes/site");
+const pool = require("./db");
+const { readFile } = require("./lib/storage");
 const { rememberBase, startWaitlistTimer } = require("./lib/waitlist");
 
 const app = express();
@@ -31,12 +34,34 @@ app.use((req, res, next) => {
 app.use("/api/platform", platformRouter);
 app.use("/api/:tenantSlug/public", resolveTenant, publicRouter);
 app.use("/api/:tenantSlug/auth", resolveTenant, authRouter);
+app.use("/api/:tenantSlug/admin/site", resolveTenant, requireAuth, requireOwner, siteRouter);
 app.use("/api/:tenantSlug/admin/waitlist", resolveTenant, requireAuth, waitlistRouter);
 app.use("/api/:tenantSlug/admin/bookings", resolveTenant, requireAuth, bookingsRouter);
 app.use("/api/:tenantSlug/admin", resolveTenant, requireAuth, adminRouter);
 app.use("/api/:tenantSlug/customers", resolveTenant, requireAuth, customersRouter);
 app.use("/api/:tenantSlug/team", resolveTenant, requireAuth, requireOwner, teamRouter);
 app.get("/health", (req, res) => res.json({ status: "ok" }));
+
+// Website files (photos, menu PDFs, logos, fonts). Each upload gets a new address, so they can be cached for a long time.
+app.get("/files/:id", async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(404).end();
+  try {
+    const r = await pool.query("SELECT * FROM site_files WHERE id = $1", [req.params.id]);
+    const f = r.rows[0];
+    if (!f) return res.status(404).end();
+    const buf = await readFile(f.storage, f.storage_key);
+    if (!buf) return res.status(404).send("This file is no longer stored. Please upload it again.");
+    res.set("Content-Type", f.content_type);
+    res.set("Cache-Control", "public, max-age=31536000, immutable");
+    res.set("X-Content-Type-Options", "nosniff");
+    if (f.kind === "pdf") res.set("Content-Disposition", `inline; filename="${(f.name || "menu.pdf").replace(/[^\w .-]/g, "")}"`);
+    if (f.kind === "font") res.set("Access-Control-Allow-Origin", "*");
+    res.send(buf);
+  } catch (err) {
+    console.error(err);
+    res.status(500).end();
+  }
+});
 app.use("/api", (req, res) => res.status(404).json({ error: "Not found" }));
 
 // The booking app itself (built from the frontend folder during deploy)

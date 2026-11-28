@@ -283,7 +283,7 @@ function Badge({ tone, children }) {
 
 /* ============ CUSTOMER BOOKING FLOW ============ */
 
-export function CustomerBooking({ bookings, tables, sittings, terms, square, onSubmit, onJoinWaitlist, cutoffMinutes = 30 }) {
+export function CustomerBooking({ bookings, tables, sittings, terms, square, onSubmit, onJoinWaitlist, cutoffMinutes = 30, embedded = false }) {
   // Today, hide times that have passed or start too soon to book online.
   const [, setNowTick] = useState(0);
   useEffect(() => {
@@ -443,23 +443,23 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
     <div
       className="wv-body"
       style={{
-        minHeight: "100%",
-        background: "#F3ECDD",
-        color: "#2A2420",
+        minHeight: embedded ? 0 : "100%",
+        background: embedded ? "transparent" : "var(--bk-page, #F3ECDD)",
+        color: "var(--bk-text, #2A2420)",
         display: "flex",
         justifyContent: "center",
-        padding: "48px 20px 80px",
+        padding: embedded ? 0 : "48px 20px 80px",
       }}
     >
-      <div style={{ width: "100%", maxWidth: 480 }}>
-        <div style={{ textAlign: "center", marginBottom: 36 }}>
-          <div className="wv-mono" style={{ fontSize: 11, letterSpacing: "0.2em", color: "#8B7A5E", marginBottom: 10 }}>
+      <div style={{ width: "100%", maxWidth: embedded ? "none" : 480 }}>
+        <div style={{ textAlign: "center", marginBottom: 36, display: embedded ? "none" : "block" }}>
+          <div className="wv-mono" style={{ fontSize: 11, letterSpacing: "0.2em", color: "var(--bk-muted, #8B7A5E)", marginBottom: 10 }}>
             RESERVATIONS
           </div>
-          <h1 className="wv-display" style={{ fontSize: 40, fontWeight: 500, margin: 0, color: "#1B2430" }}>
+          <h1 className="wv-display" style={{ fontSize: 40, fontWeight: 500, margin: 0, color: "var(--bk-heading, #1B2430)" }}>
             {RESTAURANT_NAME}
           </h1>
-          <div style={{ height: 1, width: 48, background: "#B8894A", margin: "16px auto" }} />
+          <div style={{ height: 1, width: 48, background: "var(--bk-accent, #B8894A)", margin: "16px auto" }} />
         </div>
 
         {typeof step === "number" && step < 4 && (
@@ -470,7 +470,7 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
                 style={{
                   width: 28,
                   height: 2,
-                  background: step >= n ? "#6B2737" : "#D9CDB0",
+                  background: step >= n ? "var(--bk-accent, #6B2737)" : "var(--bk-line, #D9CDB0)",
                   transition: "background 0.2s",
                 }}
               />
@@ -512,10 +512,10 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
                         className="wv-mono"
                         style={{
                           padding: "10px 8px",
-                          borderRadius: 999,
-                          border: form.sitting === s.id ? "1.5px solid #6B2737" : "1.5px solid #DCD0B4",
-                          background: form.sitting === s.id ? "#6B2737" : "#FBF8F0",
-                          color: form.sitting === s.id ? "#FBF8F0" : "#2A2420",
+                          borderRadius: "var(--bk-r-pill, 999px)",
+                          border: form.sitting === s.id ? "1.5px solid var(--bk-accent, #6B2737)" : "1.5px solid var(--bk-line, #DCD0B4)",
+                          background: form.sitting === s.id ? "var(--bk-accent, #6B2737)" : "var(--bk-field, #FBF8F0)",
+                          color: form.sitting === s.id ? "var(--bk-on-accent, #FBF8F0)" : "var(--bk-text, #2A2420)",
                           cursor: "pointer",
                           fontSize: 13,
                           fontWeight: 600,
@@ -534,7 +534,7 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
                 <button type="button" onClick={() => set("partySize", Math.max(1, form.partySize - 1))} style={stepperBtn}>−</button>
                 <div className="wv-mono" style={{ fontSize: 20, width: 32, textAlign: "center" }}>{form.partySize}</div>
                 <button type="button" onClick={() => set("partySize", Math.min(12, form.partySize + 1))} style={stepperBtn}>+</button>
-                <span style={{ fontSize: 13, color: "#8B7A5E" }}>guests</span>
+                <span style={{ fontSize: 13, color: "var(--bk-muted, #8B7A5E)" }}>guests</span>
               </div>
               {needsDeposit && (
                 <div style={{ marginTop: 10 }}>
@@ -550,13 +550,13 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
             <SubmitButton onClick={handleStep1Continue}>Next</SubmitButton>
             {full && onJoinWaitlist && form.sitting && (
               <div style={{ marginTop: 16, textAlign: "center" }}>
-                <div style={{ fontSize: 13, color: "#5B5145", marginBottom: 10 }}>
+                <div style={{ fontSize: 13, color: "var(--bk-text2, #5B5145)", marginBottom: 10 }}>
                   Want this time anyway? We'll text you if a table comes free.
                 </div>
                 <button
                   type="button"
                   onClick={() => { setError(""); setStep("waitlist"); }}
-                  style={{ ...submitBtnStyle, width: "100%", background: "transparent", color: "#6B2737", border: "1.5px solid #6B2737" }}
+                  style={{ ...submitBtnStyle, width: "100%", background: "transparent", color: "var(--bk-accent, #6B2737)", border: "1.5px solid var(--bk-accent, #6B2737)" }}
                 >
                   Join the waitlist
                 </button>
@@ -568,7 +568,7 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
         {step === "waitlist" && (
           <div style={cardStyle}>
             <SummaryStrip date={form.date} sittingLabel={sittingLabel} partySize={form.partySize} />
-            <div style={{ fontSize: 13, color: "#5B5145", lineHeight: 1.6, marginBottom: 18 }}>
+            <div style={{ fontSize: 13, color: "var(--bk-text2, #5B5145)", lineHeight: 1.6, marginBottom: 18 }}>
               This time is full. Join the waitlist and we'll text you if a table comes free. You'll have a short time to confirm it.
             </div>
             <Field label="Full name">
@@ -592,13 +592,13 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
 
         {step === "waitlisted" && (
           <div style={{ ...cardStyle, textAlign: "center" }}>
-            <h2 className="wv-display" style={{ fontSize: 24, margin: "0 0 10px", color: "#1B2430" }}>You're on the waitlist</h2>
-            <div style={{ textAlign: "left", background: "#FBF8F0", borderRadius: 8, padding: 16, marginBottom: 20 }}>
+            <h2 className="wv-display" style={{ fontSize: 24, margin: "0 0 10px", color: "var(--bk-heading, #1B2430)" }}>You're on the waitlist</h2>
+            <div style={{ textAlign: "left", background: "var(--bk-field, #FBF8F0)", borderRadius: 8, padding: 16, marginBottom: 20 }}>
               <Row label="Date" value={friendlyDate(form.date)} />
               <Row label="Time" value={sittingTime} />
               <Row label="Guests" value={form.partySize} />
             </div>
-            <div style={{ fontSize: 13, color: "#5B5145", lineHeight: 1.6 }}>
+            <div style={{ fontSize: 13, color: "var(--bk-text2, #5B5145)", lineHeight: 1.6 }}>
               If a table comes free we'll text {form.phone} with a link to confirm it. This isn't a booking yet.
             </div>
           </div>
@@ -610,8 +610,8 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
             {terms && terms.trim() && (
               <div
                 style={{
-                  background: "#FBF8F0",
-                  border: "1px solid #E7DBC0",
+                  background: "var(--bk-field, #FBF8F0)",
+                  border: "1px solid var(--bk-line, #E7DBC0)",
                   borderRadius: 8,
                   padding: "12px 14px",
                   marginBottom: 20,
@@ -619,10 +619,10 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
                   overflowY: "auto",
                 }}
               >
-                <div className="wv-mono" style={{ fontSize: 10, letterSpacing: "0.1em", color: "#8B7A5E", marginBottom: 8 }}>
+                <div className="wv-mono" style={{ fontSize: 10, letterSpacing: "0.1em", color: "var(--bk-muted, #8B7A5E)", marginBottom: 8 }}>
                   TERMS & CONDITIONS
                 </div>
-                <div style={{ fontSize: 12.5, lineHeight: 1.6, color: "#5B5145", whiteSpace: "pre-wrap" }}>
+                <div style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--bk-text2, #5B5145)", whiteSpace: "pre-wrap" }}>
                   {terms}
                 </div>
               </div>
@@ -645,7 +645,7 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
               />
             </Field>
             {needsDeposit && (
-              <div style={{ background: "#F5EAD8", border: "1px solid #E3D2AE", borderRadius: 8, padding: "12px 14px", fontSize: 13, color: "#7A5A28", marginBottom: 20 }}>
+              <div style={{ background: "var(--bk-field, #F5EAD8)", border: "1px solid var(--bk-line, #E3D2AE)", borderRadius: 8, padding: "12px 14px", fontSize: 13, color: "var(--bk-text2, #7A5A28)", marginBottom: 20 }}>
                 Groups of {DEPOSIT_THRESHOLD} or more require a ${depositAmount} deposit to confirm.
               </div>
             )}
@@ -678,7 +678,7 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
               />
             ) : (
               <>
-                <div style={{ fontSize: 13, color: "#5B5145", lineHeight: 1.6, marginBottom: 16 }}>
+                <div style={{ fontSize: 13, color: "var(--bk-text2, #5B5145)", lineHeight: 1.6, marginBottom: 16 }}>
                   The restaurant will contact you to take the deposit and confirm your table.
                 </div>
                 {error && <ErrorText>{error}</ErrorText>}
@@ -696,9 +696,9 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
         {step === 4 && confirmed && (
           <div style={{ ...cardStyle, textAlign: "center" }}>
             <div style={{ fontSize: 32, marginBottom: 6 }}>✓</div>
-            <h2 className="wv-display" style={{ fontSize: 24, margin: "0 0 6px", color: "#1B2430" }}>Booking confirmed</h2>
-            <div className="wv-mono" style={{ fontSize: 13, color: "#8B7A5E", marginBottom: 20 }}>{confirmed.reference}</div>
-            <div style={{ textAlign: "left", background: "#FBF8F0", borderRadius: 8, padding: 16, marginBottom: 20 }}>
+            <h2 className="wv-display" style={{ fontSize: 24, margin: "0 0 6px", color: "var(--bk-heading, #1B2430)" }}>Booking confirmed</h2>
+            <div className="wv-mono" style={{ fontSize: 13, color: "var(--bk-muted, #8B7A5E)", marginBottom: 20 }}>{confirmed.reference}</div>
+            <div style={{ textAlign: "left", background: "var(--bk-field, #FBF8F0)", borderRadius: 8, padding: 16, marginBottom: 20 }}>
               <Row label="Date" value={friendlyDate(confirmed.date)} />
               <Row label="Time" value={sittingTime} />
               <Row label="Guests" value={confirmed.partySize} />
@@ -709,12 +709,12 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
             </div>
             {confirmed.receiptUrl && (
               <div style={{ marginBottom: 14 }}>
-                <a href={confirmed.receiptUrl} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "#6B2737" }}>
+                <a href={confirmed.receiptUrl} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "var(--bk-accent, #6B2737)" }}>
                   View your deposit receipt
                 </a>
               </div>
             )}
-            <div style={{ fontSize: 13, color: "#5B5145", lineHeight: 1.6 }}>
+            <div style={{ fontSize: 13, color: "var(--bk-text2, #5B5145)", lineHeight: 1.6 }}>
               Please keep your booking reference. To change or cancel, contact {RESTAURANT_NAME} directly.
             </div>
           </div>
@@ -727,7 +727,7 @@ export function CustomerBooking({ bookings, tables, sittings, terms, square, onS
 function Row({ label, value }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 14 }}>
-      <span style={{ color: "#8B7A5E" }}>{label}</span>
+      <span style={{ color: "var(--bk-muted, #8B7A5E)" }}>{label}</span>
       <span style={{ fontWeight: 600 }}>{value}</span>
     </div>
   );
@@ -741,8 +741,8 @@ function SummaryStrip({ date, sittingLabel, partySize }) {
         display: "flex",
         justifyContent: "space-between",
         fontSize: 12,
-        color: "#8B7A5E",
-        background: "#FBF8F0",
+        color: "var(--bk-muted, #8B7A5E)",
+        background: "var(--bk-field, #FBF8F0)",
         borderRadius: 8,
         padding: "10px 14px",
         marginBottom: 20,
@@ -758,7 +758,7 @@ function SummaryStrip({ date, sittingLabel, partySize }) {
 function Field({ label, children, style }) {
   return (
     <div style={{ marginBottom: 18, ...style }}>
-      <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5B5145", marginBottom: 6, letterSpacing: "0.02em" }}>
+      <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--bk-text2, #5B5145)", marginBottom: 6, letterSpacing: "0.02em" }}>
         {label}
       </label>
       {children}
@@ -870,9 +870,9 @@ function SquareCardForm({ square, amount, contact, submitting, error, setError, 
   return (
     <>
       <div ref={containerRef} style={{ minHeight: 90, marginBottom: 8 }} />
-      {!ready && !error && <div style={{ fontSize: 12, color: "#8B7A5E", marginBottom: 12 }}>Loading secure card form...</div>}
+      {!ready && !error && <div style={{ fontSize: 12, color: "var(--bk-muted, #8B7A5E)", marginBottom: 12 }}>Loading secure card form...</div>}
       {square.environment !== "production" && (
-        <div style={{ fontSize: 11, color: "#8B7A5E", marginBottom: 12 }}>
+        <div style={{ fontSize: 11, color: "var(--bk-muted, #8B7A5E)", marginBottom: 12 }}>
           Test mode: no real money is charged. Use card 4111 1111 1111 1111, any future expiry, CVV 111 and any postcode.
         </div>
       )}
@@ -892,7 +892,7 @@ function BackButton({ onClick }) {
     <button
       type="button"
       onClick={onClick}
-      style={{ ...submitBtnStyle, flex: "0 0 auto", background: "transparent", color: "#8B7A5E", border: "1.5px solid #DCD0B4" }}
+      style={{ ...submitBtnStyle, flex: "0 0 auto", background: "transparent", color: "var(--bk-muted, #8B7A5E)", border: "1.5px solid var(--bk-line, #DCD0B4)" }}
     >
       Back
     </button>
@@ -900,21 +900,21 @@ function BackButton({ onClick }) {
 }
 
 const cardStyle = {
-  background: "#FFFDF8",
-  border: "1px solid #E7DBC0",
-  borderRadius: 14,
-  padding: 28,
-  boxShadow: "0 1px 3px rgba(27,36,48,0.06)",
+  background: "var(--bk-card, #FFFDF8)",
+  border: "var(--bk-card-border, 1px solid #E7DBC0)",
+  borderRadius: "var(--bk-r-card, 14px)",
+  padding: "var(--bk-card-pad, 28px)",
+  boxShadow: "var(--bk-shadow, 0 1px 3px rgba(27,36,48,0.06))",
 };
 
 const inputStyle = {
   width: "100%",
   padding: "11px 12px",
-  borderRadius: 8,
-  border: "1.5px solid #DCD0B4",
-  background: "#FBF8F0",
+  borderRadius: "var(--bk-r, 8px)",
+  border: "1.5px solid var(--bk-line, #DCD0B4)",
+  background: "var(--bk-field, #FBF8F0)",
   fontSize: 14,
-  color: "#2A2420",
+  color: "var(--bk-text, #2A2420)",
   fontFamily: "inherit",
   boxSizing: "border-box",
   outline: "none",
@@ -923,22 +923,24 @@ const inputStyle = {
 const stepperBtn = {
   width: 34,
   height: 34,
-  borderRadius: 8,
-  border: "1.5px solid #DCD0B4",
-  background: "#FBF8F0",
+  borderRadius: "var(--bk-r, 8px)",
+  border: "1.5px solid var(--bk-line, #DCD0B4)",
+  background: "var(--bk-field, #FBF8F0)",
   fontSize: 18,
   cursor: "pointer",
-  color: "#2A2420",
+  color: "var(--bk-text, #2A2420)",
 };
 
 const submitBtnStyle = {
   flex: 1,
   width: "100%",
   padding: "13px 16px",
-  borderRadius: 8,
+  borderRadius: "var(--bk-r, 8px)",
+  textTransform: "var(--bk-btn-case, none)",
+  letterSpacing: "var(--bk-btn-track, normal)",
   border: "none",
-  background: "#6B2737",
-  color: "#FBF8F0",
+  background: "var(--bk-accent, #6B2737)",
+  color: "var(--bk-on-accent, #FBF8F0)",
   fontSize: 14,
   fontWeight: 600,
   cursor: "pointer",
@@ -1058,7 +1060,7 @@ function statusOf(booking) {
   return { tone: "success", label: "Confirmed" };
 }
 
-export function OwnerDashboard({ bookings, floorElements, setFloorElements, roomSize, setRoomSize, sittings, setSittings, terms, setTerms, sections, setSections, addBooking, removeBooking, updateBooking, toggleArrival, setArrivalAll, customerNotes, setCustomerNote, refundDeposit, onLogout, userEmail, bookingPageUrl, isOwner = true, roleLabel, onOpenTeam, onChangePassword, allRestaurantsUrl, waitlist, waitlistActions }) {
+export function OwnerDashboard({ bookings, floorElements, setFloorElements, roomSize, setRoomSize, sittings, setSittings, terms, setTerms, sections, setSections, addBooking, removeBooking, updateBooking, toggleArrival, setArrivalAll, customerNotes, setCustomerNote, refundDeposit, onLogout, userEmail, bookingPageUrl, isOwner = true, roleLabel, onOpenTeam, onChangePassword, allRestaurantsUrl, waitlist, waitlistActions, onOpenWebsite }) {
   const [date, setDate] = useState(todayISO());
   const [waitlistOpen, setWaitlistOpen] = useState(false);
   const [walkInPrefill, setWalkInPrefill] = useState(null);
@@ -1173,6 +1175,11 @@ export function OwnerDashboard({ bookings, floorElements, setFloorElements, room
               {isOwner && onOpenTeam && (
                 <button onClick={onOpenTeam} className="lib-pill">
                   Team
+                </button>
+              )}
+              {isOwner && onOpenWebsite && (
+                <button onClick={onOpenWebsite} className="lib-pill">
+                  Website
                 </button>
               )}
               {isOwner && (

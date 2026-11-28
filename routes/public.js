@@ -8,6 +8,7 @@ const { publicSquareConfig, squareConfig, chargeDeposit, refundPayment } = requi
 const { BookingError, resolveCustomer, lockAndLoad, placeBooking, isValidDate } = require("../lib/bookingCore");
 const { tooManyAttempts, recordFailure } = require("../lib/rateLimit");
 const { findOffer, acceptOffer, declineOffer, time12 } = require("../lib/waitlist");
+const { cleanSite } = require("../lib/site");
 
 // GET /api/:tenantSlug/public/config — restaurant name, times, tables, terms, deposit rules
 router.get("/config", async (req, res) => {
@@ -40,6 +41,8 @@ router.get("/config", async (req, res) => {
         maxParty: r.max_party,
       })),
       square: publicSquareConfig(),
+      siteEnabled: Boolean(t.site_enabled && t.site),
+      site: t.site_enabled && t.site ? cleanSite(t.site, t.name) : null,
     });
   } catch (err) {
     console.error(err);
