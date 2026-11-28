@@ -4,6 +4,12 @@ const router = express.Router();
 const pool = require("../db");
 const { requirePlatform } = require("../middleware/auth");
 const { tooManyAttempts, recordFailure, clearFailures } = require("../lib/rateLimit");
+const { seedTenant } = require("../lib/seed");
+const { DEMO_SITTINGS } = require("../lib/defaults");
+const { DEMO_SITES } = require("../lib/site");
+
+// Web addresses that are already used by Dorsia itself.
+const RESERVED = ["admin", "api", "files", "demo", "assets", "health", "book", "offer", "login", "dorsia", "www"];
 const {
   cleanEmail,
   validEmail,
@@ -101,6 +107,40 @@ router.get("/restaurants", requirePlatform, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Could not load restaurants" });
+  }
+});
+
+// POST /api/platform/restaurants { name, slug } — adds a restaurant with a starting floor plan and booking times.
+// Its website starts switched off. A bundled demo design (e.g. "cugini") is loaded in if there is one.
+router.post("/restaurants", requirePlatform, async (req, res) => {
+  const name = String(req.body?.name || "").trim().slice(0, 80);
+  const slug = String(req.body?.slug || "").trim().toLowerCase();
+  if (!name) return res.status(400).json({ error: "Enter the restaurant's name." });
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug) || slug.length < 2 || slug.length > 40) {
+    return res.status(400).json({ error: "The web address can only use lowercase letters, numbers and dashes, e.g. cugini or the-wharf." });
+  }
+  if (RESERVED.includes(slug)) return res.status(400).json({ error: "That web address is used by Dorsia itself. Pick another." });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const existing = await client.query("SELECT 1 FROM tenants WHERE slug = $1", [slug]);
+    if (existing.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: `resatdorsia.com/${slug} is already taken.` });
+    }
+    const r = await client.query("INSERT INTO tenants (slug, name) VALUES ($1, $2) RETURNING id", [slug, name]);
+    await seedTenant(client, r.rows[0].id, DEMO_SITTINGS[slug]);
+    if (DEMO_SITES[slug]) {
+      await client.query("UPDATE tenants SET site = $2, site_enabled = false WHERE id = $1", [r.rows[0].id, JSON.stringify(DEMO_SITES[slug]())]);
+    }
+    await client.query("COMMIT");
+    res.status(201).json({ slug, name, demoDesign: Boolean(DEMO_SITES[slug]) });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error(err);
+    res.status(500).json({ error: "Could not add the restaurant" });
+  } finally {
+    client.release();
   }
 });
 

@@ -94,7 +94,7 @@ const SITE_CSS = `
 .dsite .s-hero-img { display: block; width: 100%; }
 .dsite .s-hero.fd-whole .s-hero-img { height: auto; }
 .dsite .s-hero.fd-tall { height: min(92vh, 62cqw); min-height: 520px; }
-.dsite .s-hero.fd-tall .s-hero-img { position: absolute; left: 0; right: 0; bottom: 0; top: var(--hg-d); height: auto; object-fit: cover; }
+.dsite .s-hero.fd-tall .s-hero-img { position: absolute; left: 0; right: 0; top: var(--hg-d); height: calc(100% - var(--hg-d)); object-fit: cover; }
 .dsite .s-hero-shade { position: absolute; left: 0; right: 0; bottom: 0; top: var(--hg-d); pointer-events: none;
   background: linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 24%, rgba(0,0,0,0) 62%, rgba(0,0,0,0.8) 100%); }
 .dsite .s-hero-title { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; color: #fff; font-size: clamp(44px, 8cqw, 120px); }
@@ -145,7 +145,7 @@ const SITE_CSS = `
   .dsite .s-hero.fp-whole .s-hero-foot .s-btn { color: var(--s-text); border-color: var(--s-text); }
   .dsite .s-hero.fp-whole .s-hero-foot .s-btn.fill { color: var(--s-on-accent); border-color: var(--s-accent); }
   .dsite .s-hero.fp-tall { height: auto; aspect-ratio: 9 / 16; max-height: 100vh; min-height: 0; }
-  .dsite .s-hero.fp-tall .s-hero-img { position: absolute; left: 0; right: 0; bottom: 0; top: var(--hg-p); height: auto; object-fit: cover; }
+  .dsite .s-hero.fp-tall .s-hero-img { position: absolute; left: 0; right: 0; top: var(--hg-p); height: calc(100% - var(--hg-p)); object-fit: cover; }
   .dsite .s-hero.fp-whole .s-hero-img { top: auto; }
   .dsite .s-hero-foot { bottom: var(--hb-p); flex-direction: column !important; align-items: stretch !important; text-align: center; gap: 22px; }
   .dsite .s-hero-foot .s-btn { min-width: 0; width: 100%; }
@@ -278,9 +278,10 @@ export function SitePage({ name, site, booking, preview = false }) {
       <span className="only-phone">{menuFor(header.menuPhone)}</span>
     </>
   );
+  const pos = header.logoPosition;
   const logo = (
     <a href="#top" className="s-logo" aria-label={`${name}, home`}>
-      {header.logo && <img src={header.logo} alt="" style={{ height: header.logoHeight, width: "auto", display: "block", maxWidth: "60cqw" }} />}
+      {header.logo && <img src={header.logo} alt="" style={{ height: header.logoHeight, width: "auto", display: "block", maxWidth: "55cqw", objectFit: "contain", objectPosition: pos === "right" ? "right" : pos === "centre" ? "center" : "left" }} />}
       {header.showName && (
         <span className="s-head" style={{ fontSize: header.logo ? 18 : 28, marginTop: header.logo ? 8 : 0, color: "currentColor" }}>
           {name}
@@ -288,17 +289,16 @@ export function SitePage({ name, site, booking, preview = false }) {
       )}
     </a>
   );
-  const pos = header.logoPosition;
 
   const heroFootAll = hero.buttons === "all";
   const heroButtons =
     hero.buttons === "none" ? null : heroFootAll ? (
       <div className="s-stack">
-        {menuItems.slice(0, 3).map((it, i) => (
+        {menuItems.slice(0, 2).map((it, i) => (
           <LinkTo key={i} item={it} className="s-btn" />
         ))}
         {hasBooking && <a href="#book" className="s-btn fill">{classic ? "Reserve a table" : "make a reservation"}</a>}
-        {menuItems.slice(3, 4).map((it, i) => (
+        {menuItems.slice(2, 4).map((it, i) => (
           <LinkTo key={`b${i}`} item={it} className="s-btn" />
         ))}
       </div>

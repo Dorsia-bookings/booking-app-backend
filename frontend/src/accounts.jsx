@@ -314,6 +314,71 @@ export function TeamModal({ api, currentEmail, onClose }) {
 
 /* ---------- Dorsia master page (/admin) ---------- */
 
+// Adds a restaurant: name plus its web address (resatdorsia.com/<address>).
+function AddRestaurant({ api, onAdded }) {
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [slugEdited, setSlugEdited] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(null);
+  const toSlug = (v) => v.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+
+  async function submit(e) {
+    e.preventDefault();
+    setError("");
+    setBusy(true);
+    try {
+      const r = await api.post("/restaurants", { name: name.trim(), slug });
+      setDone(r);
+      onAdded(r);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} style={{ background: "#1C1C1E", border: "1px solid #38383A", borderRadius: 14, padding: 18, marginBottom: 16 }}>
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Add a restaurant</div>
+      <label style={{ display: "block", fontSize: 12, color: "#98989D", marginBottom: 6 }}>Name</label>
+      <input
+        value={name}
+        onChange={(e) => {
+          setName(e.target.value);
+          if (!slugEdited) setSlug(toSlug(e.target.value));
+        }}
+        placeholder="e.g. Cugini"
+        style={darkInput}
+        required
+      />
+      <label style={{ display: "block", fontSize: 12, color: "#98989D", marginBottom: 6 }}>Web address</label>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+        <span style={{ fontSize: 14, color: "#98989D", whiteSpace: "nowrap" }}>{window.location.host}/</span>
+        <input
+          value={slug}
+          onChange={(e) => {
+            setSlugEdited(true);
+            setSlug(toSlug(e.target.value));
+          }}
+          placeholder="cugini"
+          style={{ ...darkInput, marginBottom: 0 }}
+          required
+        />
+      </div>
+      <p style={{ fontSize: 12, color: "#98989D", lineHeight: 1.5, margin: "0 0 12px" }}>
+        It starts with a sample floor plan and booking times, and its website switched off. Add the owner's login from its dashboard under Team.
+      </p>
+      {error && <div style={{ color: "#FF453A", fontSize: 13, marginBottom: 10 }}>{error}</div>}
+      {done && <div style={{ color: "#30D158", fontSize: 13, marginBottom: 10 }}>Added {done.name}.{done.demoDesign ? " Its demo website design is loaded in (switched off)." : ""}</div>}
+      <button type="submit" disabled={busy || !name.trim() || !slug} style={{ ...darkButton, opacity: busy ? 0.6 : 1 }}>
+        {busy ? "Adding..." : "Add restaurant"}
+      </button>
+    </form>
+  );
+}
+
 export function PlatformApp() {
   const [token, setTokenState] = useState(() => loadToken(PLATFORM));
   const tokenRef = React.useRef(token);
@@ -326,6 +391,7 @@ export function PlatformApp() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [pwOpen, setPwOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
 
   useEffect(() => {
     document.title = "Dorsia · Master";
@@ -363,6 +429,19 @@ export function PlatformApp() {
         </div>
         {error && <div style={{ color: "#FF453A", marginBottom: 12 }}>{error}</div>}
         {!data && !error && <div style={{ color: "#98989D" }}>Loading...</div>}
+        {data && (
+          <div style={{ marginBottom: 14, display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={() => setAddOpen((o) => !o)} style={{ ...darkButton, width: "auto", padding: "9px 16px" }}>
+              {addOpen ? "Cancel" : "Add restaurant"}
+            </button>
+          </div>
+        )}
+        {data && addOpen && (
+          <AddRestaurant
+            api={api}
+            onAdded={() => api.get("/restaurants").then(setData).catch(() => {})}
+          />
+        )}
         {data && (
           <div style={{ background: "#1C1C1E", border: "1px solid #38383A", borderRadius: 14, overflow: "hidden" }}>
             {data.restaurants.map((r, i) => (
